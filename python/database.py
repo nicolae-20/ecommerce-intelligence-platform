@@ -1,9 +1,11 @@
 import os
+from pathlib import Path
 
 import oracledb
 from dotenv import load_dotenv
 
-load_dotenv()
+env_path = Path(__file__).resolve().parent / ".env"
+load_dotenv(env_path)
 
 
 def get_connection():

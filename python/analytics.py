@@ -79,3 +79,22 @@ def get_customer_metrics():
             return cursor.fetchall()
     finally:
         connection.close()
+
+def get_customer(customer_id):
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    customer_id,
+                    first_name,
+                    last_name,
+                    country
+                FROM customers
+                WHERE customer_id = :customer_id
+            """, {"customer_id": customer_id})
+
+            return cursor.fetchone()
+    finally:
+        connection.close()

@@ -1,11 +1,16 @@
+import os
+
 import oracledb
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def get_connection():
     return oracledb.connect(
-        user="SQL_LEARNING",
-        password="Rtuewn24!?",
-        dsn="localhost:1521/freepdb1",
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        dsn=os.getenv("DB_DSN"),
     )
 
 

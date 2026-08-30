@@ -1,0 +1,81 @@
+from database import get_connection
+
+
+def get_top_customers(limit=5):
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    c.first_name || ' ' || c.last_name AS customer_name,
+                    ROUND(SUM(oi.quantity * oi.unit_price), 2) AS total_revenue
+                FROM customers c
+                JOIN orders o
+                    ON c.customer_id = o.customer_id
+                JOIN order_items oi
+                    ON o.order_id = oi.order_id
+                WHERE o.status = 'COMPLETED'
+                GROUP BY
+                    c.customer_id,
+                    c.first_name,
+                    c.last_name
+                ORDER BY total_revenue DESC
+                FETCH FIRST :limit ROWS ONLY
+            """, {"limit": limit})
+
+            return cursor.fetchall()
+    finally:
+        connection.close()
+
+
+def get_monthly_revenue():
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    TO_CHAR(o.order_date, 'YYYY-MM') AS order_month,
+                    ROUND(SUM(oi.quantity * oi.unit_price), 2) AS monthly_revenue
+                FROM orders o
+                JOIN order_items oi
+                    ON o.order_id = oi.order_id
+                WHERE o.status = 'COMPLETED'
+                GROUP BY TO_CHAR(o.order_date, 'YYYY-MM')
+                ORDER BY order_month
+            """)
+
+            return cursor.fetchall()
+    finally:
+        connection.close()
+
+
+def get_customer_metrics():
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    c.customer_id,
+                    c.first_name || ' ' || c.last_name AS customer_name,
+                    COUNT(DISTINCT o.order_id) AS total_orders,
+                    SUM(oi.quantity) AS total_items,
+                    ROUND(SUM(oi.quantity * oi.unit_price), 2) AS total_revenue
+                FROM customers c
+                JOIN orders o
+                    ON c.customer_id = o.customer_id
+                JOIN order_items oi
+                    ON o.order_id = oi.order_id
+                WHERE o.status = 'COMPLETED'
+                GROUP BY
+                    c.customer_id,
+                    c.first_name,
+                    c.last_name
+                ORDER BY total_revenue DESC
+            """)
+
+            return cursor.fetchall()
+    finally:
+        connection.close()

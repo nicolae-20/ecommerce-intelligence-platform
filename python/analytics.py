@@ -130,3 +130,29 @@ def get_profit_by_category():
             return cursor.fetchall()
     finally:
         connection.close()
+
+
+def get_overview():
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    ROUND(SUM(oi.quantity * oi.unit_price), 2) AS total_revenue,
+                    COUNT(DISTINCT o.order_id) AS total_orders,
+                    COUNT(DISTINCT o.customer_id) AS total_customers,
+                    ROUND(
+                        SUM(oi.quantity * oi.unit_price)
+                        / COUNT(DISTINCT o.order_id),
+                        2
+                    ) AS average_order_value
+                FROM orders o
+                JOIN order_items oi
+                    ON o.order_id = oi.order_id
+                WHERE o.status = 'COMPLETED'
+            """)
+
+            return cursor.fetchone()
+    finally:
+        connection.close()

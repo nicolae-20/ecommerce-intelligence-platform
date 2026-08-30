@@ -51,3 +51,15 @@ def test_profit_by_category():
     assert "revenue" in data[0]
     assert "cost" in data[0]
     assert "profit" in data[0]
+
+def test_overview():
+    response = client.get("/analytics/overview")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total_revenue"] > 0
+    assert data["total_orders"] > 0
+    assert data["total_customers"] > 0
+    assert data["average_order_value"] > 0

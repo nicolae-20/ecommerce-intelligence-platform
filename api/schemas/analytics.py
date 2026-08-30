@@ -11,3 +11,9 @@ class CategoryProfit(BaseModel):
     revenue: float
     cost: float
     profit: float
+
+class Overview(BaseModel):
+    total_revenue: float
+    total_orders: int
+    total_customers: int
+    average_order_value: float

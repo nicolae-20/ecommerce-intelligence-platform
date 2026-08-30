@@ -37,3 +37,17 @@ def test_customer_metrics():
 
     assert len(data) > 0
     assert data[0]["customer_id"] == 1
+
+
+def test_profit_by_category():
+    response = client.get("/analytics/profit-by-category")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert len(data) > 0
+    assert "category_name" in data[0]
+    assert "revenue" in data[0]
+    assert "cost" in data[0]
+    assert "profit" in data[0]

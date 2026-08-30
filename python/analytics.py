@@ -98,3 +98,35 @@ def get_customer(customer_id):
             return cursor.fetchone()
     finally:
         connection.close()
+
+
+def get_profit_by_category():
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    c.category_name,
+                    ROUND(SUM(oi.quantity * oi.unit_price), 2) AS revenue,
+                    ROUND(SUM(oi.quantity * p.cost_price), 2) AS cost,
+                    ROUND(
+                        SUM(oi.quantity * oi.unit_price)
+                        - SUM(oi.quantity * p.cost_price),
+                        2
+                    ) AS profit
+                FROM orders o
+                JOIN order_items oi
+                    ON o.order_id = oi.order_id
+                JOIN products p
+                    ON oi.product_id = p.product_id
+                JOIN categories c
+                    ON p.category_id = c.category_id
+                WHERE o.status = 'COMPLETED'
+                GROUP BY c.category_name
+                ORDER BY profit DESC
+            """)
+
+            return cursor.fetchall()
+    finally:
+        connection.close()

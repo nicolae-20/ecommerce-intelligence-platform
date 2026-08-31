@@ -63,3 +63,16 @@ def test_overview():
     assert data["total_orders"] > 0
     assert data["total_customers"] > 0
     assert data["average_order_value"] > 0
+
+
+def test_financial_summary():
+    response = client.get("/analytics/financial-summary")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total_revenue"] == 6236.8
+    assert data["total_cogs"] == 3909.0
+    assert data["gross_profit"] == 2327.8
+    assert data["gross_margin"] == 37.32

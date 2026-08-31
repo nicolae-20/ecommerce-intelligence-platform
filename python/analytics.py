@@ -156,3 +156,38 @@ def get_overview():
             return cursor.fetchone()
     finally:
         connection.close()
+
+
+def get_financial_summary():
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    ROUND(SUM(oi.quantity * oi.unit_price), 2) AS total_revenue,
+                    ROUND(SUM(oi.quantity * p.cost_price), 2) AS total_cogs,
+                    ROUND(
+                        SUM(oi.quantity * oi.unit_price)
+                        - SUM(oi.quantity * p.cost_price),
+                        2
+                    ) AS gross_profit,
+                    ROUND(
+                        (
+                            SUM(oi.quantity * oi.unit_price)
+                            - SUM(oi.quantity * p.cost_price)
+                        )
+                        / NULLIF(SUM(oi.quantity * oi.unit_price), 0) * 100,
+                        2
+                    ) AS gross_margin
+                FROM orders o
+                JOIN order_items oi
+                    ON o.order_id = oi.order_id
+                JOIN products p
+                    ON oi.product_id = p.product_id
+                WHERE o.status = 'COMPLETED'
+            """)
+
+            return cursor.fetchone()
+    finally:
+        connection.close()

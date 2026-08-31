@@ -14,8 +14,19 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 from api.schemas.analytics import MonthlyRevenue
 
-from analytics import get_monthly_revenue, get_overview, get_profit_by_category
-from api.schemas.analytics import CategoryProfit, MonthlyRevenue, Overview
+from analytics import (
+    get_financial_summary,
+    get_monthly_revenue,
+    get_overview,
+    get_profit_by_category,
+)
+
+from api.schemas.analytics import (
+    CategoryProfit,
+    FinancialSummary,
+    MonthlyRevenue,
+    Overview,
+)
 
 @router.get("/overview", response_model=Overview)
 def overview():
@@ -55,3 +66,15 @@ def profit_by_category():
         )
         for row in rows
     ]
+
+
+@router.get("/financial-summary", response_model=FinancialSummary)
+def financial_summary():
+    row = get_financial_summary()
+
+    return FinancialSummary(
+        total_revenue=float(row[0] or 0),
+        total_cogs=float(row[1] or 0),
+        gross_profit=float(row[2] or 0),
+        gross_margin=float(row[3] or 0),
+    )

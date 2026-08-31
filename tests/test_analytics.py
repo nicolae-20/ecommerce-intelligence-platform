@@ -3,8 +3,12 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "python"))
 
-from analytics import get_customer_metrics, get_monthly_revenue, get_top_customers
-
+from analytics import (
+    get_customer_metrics,
+    get_financial_summary,
+    get_monthly_revenue,
+    get_top_customers,
+)
 
 def test_top_customers():
     customers = get_top_customers(5)
@@ -25,3 +29,12 @@ def test_customer_metrics():
 
     assert len(metrics) > 0
     assert metrics[0][0] == 1
+
+
+def test_financial_summary():
+    summary = get_financial_summary()
+
+    assert summary[0] == 6236.8
+    assert summary[1] == 3909
+    assert summary[2] == 2327.8
+    assert summary[3] == 37.32

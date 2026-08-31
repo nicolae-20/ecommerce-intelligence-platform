@@ -288,13 +288,12 @@ def get_bookkeeping_summary():
                     ) AS net_movement,
 
                     COUNT(
-                        CASE
-                            WHEN category IS NULL
-                                 OR reconciliation_status = 'UNMATCHED'
-                                 OR status = 'PENDING'
-                            THEN 1
-                        END
-                    ) AS transactions_requiring_review
+    CASE
+        WHEN category IS NULL
+             OR reconciliation_status = 'UNMATCHED'
+        THEN 1
+    END
+) AS transactions_requiring_review
 
                 FROM financial_transactions
             """)
@@ -324,12 +323,140 @@ def get_transactions_requiring_review():
                     status
                 FROM financial_transactions
                 WHERE
-                    category IS NULL
-                    OR reconciliation_status = 'UNMATCHED'
-                    OR status = 'PENDING'
+    category IS NULL
+    OR reconciliation_status = 'UNMATCHED'
                 ORDER BY transaction_date
             """)
 
             return cursor.fetchall()
+    finally:
+        connection.close()
+
+
+def approve_transaction_category(transaction_id):
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE financial_transactions ft
+                SET
+                    accounting_category_id = (
+                        SELECT ac.accounting_category_id
+                        FROM accounting_categories ac
+                        WHERE ac.account_name = ft.ai_suggested_category
+                    ),
+                    reconciliation_status = 'MATCHED'
+                WHERE ft.transaction_id = :transaction_id
+                  AND ft.ai_suggested_category IS NOT NULL
+                  AND EXISTS (
+                      SELECT 1
+                      FROM accounting_categories ac
+                      WHERE ac.account_name = ft.ai_suggested_category
+                        AND ac.is_active = 'Y'
+                  )
+            """, {"transaction_id": transaction_id})
+
+            if cursor.rowcount == 0:
+                return False
+
+            connection.commit()
+            return True
+    finally:
+        connection.close()
+
+
+def reject_transaction_category(transaction_id):
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET ai_suggested_category = NULL,
+                    ai_confidence = NULL
+                WHERE transaction_id = :transaction_id
+            """, {"transaction_id": transaction_id})
+
+            if cursor.rowcount == 0:
+                return False
+
+            connection.commit()
+            return True
+    finally:
+        connection.close()
+
+
+def get_bookkeeping_categories():
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    accounting_category_id,
+                    account_code,
+                    account_name,
+                    account_type
+                FROM accounting_categories
+                WHERE is_active = 'Y'
+                ORDER BY accounting_category_id
+            """)
+
+            return cursor.fetchall()
+    finally:
+        connection.close()
+
+
+def assign_transaction_category(transaction_id, category_id):
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE financial_transactions ft
+                SET
+                    accounting_category_id = :category_id,
+                    reconciliation_status = 'MATCHED'
+                WHERE ft.transaction_id = :transaction_id
+                  AND EXISTS (
+                      SELECT 1
+                      FROM accounting_categories ac
+                      WHERE ac.accounting_category_id = :category_id
+                        AND ac.is_active = 'Y'
+                  )
+            """, {
+                "transaction_id": transaction_id,
+                "category_id": category_id,
+            })
+
+            if cursor.rowcount == 0:
+                return False
+
+            connection.commit()
+            return True
+    finally:
+        connection.close()
+
+
+def cancel_transaction_rejection(transaction_id):
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET
+                    ai_suggested_category = original_ai_category,
+                    ai_confidence = original_ai_confidence
+                WHERE transaction_id = :transaction_id
+                  AND original_ai_category IS NOT NULL
+            """, {"transaction_id": transaction_id})
+
+            if cursor.rowcount == 0:
+                return False
+
+            connection.commit()
+            return True
     finally:
         connection.close()

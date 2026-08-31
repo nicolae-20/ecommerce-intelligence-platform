@@ -20,3 +20,15 @@ class ReviewTransaction(BaseModel):
     ai_confidence: float | None
     reconciliation_status: str
     status: str
+
+
+class TransactionActionResponse(BaseModel):
+    success: bool
+    message: str
+
+
+class BookkeepingCategory(BaseModel):
+    category_id: int
+    account_code: str
+    account_name: str
+    account_type: str

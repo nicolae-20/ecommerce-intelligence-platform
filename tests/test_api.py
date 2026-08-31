@@ -112,3 +112,154 @@ def test_review_queue():
     assert data[2]["transaction_id"] == 5
     assert data[2]["ai_suggested_category"] == "Software"
     assert data[2]["ai_confidence"] == 0.95
+
+
+def test_approve_transaction():
+    response = client.post("/bookkeeping/transactions/1/approve")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["success"] is True
+    assert data["message"] == "AI category suggestion approved successfully."
+
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET
+                    category = NULL,
+                    reconciliation_status = 'UNMATCHED'
+                WHERE transaction_id = 1
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+def test_reject_transaction():
+    response = client.post("/bookkeeping/transactions/1/reject")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["success"] is True
+    assert data["message"] == "AI category suggestion rejected."
+
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET
+                    ai_suggested_category = 'Software',
+                    ai_confidence = 0.97
+                WHERE transaction_id = 1
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+
+def test_assign_transaction_category():
+    response = client.post("/bookkeeping/transactions/1/category/1")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["success"] is True
+    assert data["message"] == "Transaction category assigned successfully."
+
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+    accounting_category_id,
+    reconciliation_status
+                FROM financial_transactions
+                WHERE transaction_id = 1
+            """)
+
+            row = cursor.fetchone()
+
+            assert row[0] == 1
+            assert row[1] == "MATCHED"
+
+            cursor.execute("""
+    UPDATE financial_transactions
+    SET
+        category = NULL,
+        accounting_category_id = NULL,
+        reconciliation_status = 'UNMATCHED'
+    WHERE transaction_id = 1
+""")
+
+            connection.commit()
+    finally:
+        connection.close()
+
+
+def test_cancel_reject():
+    from database import get_connection
+
+    # Simulate a rejected AI suggestion first.
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET
+                    ai_suggested_category = NULL,
+                    ai_confidence = NULL
+                WHERE transaction_id = 1
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+    response = client.post(
+        "/bookkeeping/transactions/1/cancel-reject"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["success"] is True
+    assert data["message"] == "AI category suggestion restored."
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    ai_suggested_category,
+                    ai_confidence
+                FROM financial_transactions
+                WHERE transaction_id = 1
+            """)
+
+            row = cursor.fetchone()
+
+            assert row[0] == "Software"
+            assert row[1] == 0.97
+    finally:
+        connection.close()

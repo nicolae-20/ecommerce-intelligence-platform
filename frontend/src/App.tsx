@@ -70,6 +70,13 @@ type ReviewTransaction = {
   status: string
 }
 
+type BookkeepingCategory = {
+  category_id: number
+  account_code: string
+  account_name: string
+  account_type: string
+}
+
 function App() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyRevenue[]>([])
@@ -83,6 +90,10 @@ function App() {
   useState<BookkeepingSummary | null>(null)
   const [reviewQueue, setReviewQueue] =
   useState<ReviewTransaction[]>([])
+  const [bookkeepingCategories, setBookkeepingCategories] =
+  useState<BookkeepingCategory[]>([])
+  const [selectedCategories, setSelectedCategories] =
+  useState<Record<number, number | "">>({})
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -97,6 +108,7 @@ function App() {
       fetch("http://127.0.0.1:8000/analytics/accounting-insights"),
       fetch("http://127.0.0.1:8000/bookkeeping/summary"),
       fetch("http://127.0.0.1:8000/bookkeeping/review-queue"),
+      fetch("http://127.0.0.1:8000/bookkeeping/categories"),
     ])
       .then(async ([
         customersResponse,
@@ -107,6 +119,7 @@ function App() {
         accountingInsightsResponse,
         bookkeepingSummaryResponse,
         reviewQueueResponse,
+        categoriesResponse,
       ]) => {
         if (
           !customersResponse.ok ||
@@ -116,7 +129,8 @@ function App() {
           !financialSummaryResponse.ok ||
           !accountingInsightsResponse.ok ||
           !bookkeepingSummaryResponse.ok ||
-          !reviewQueueResponse.ok
+          !reviewQueueResponse.ok ||
+          !categoriesResponse.ok
         ) {
           throw new Error("Failed to load dashboard data")
         }
@@ -130,6 +144,7 @@ function App() {
   accountingInsightsData,
   bookkeepingSummaryData,
   reviewQueueData,
+  categoriesData,
 ] = await Promise.all([
   customersResponse.json(),
   revenueResponse.json(),
@@ -139,6 +154,7 @@ function App() {
   accountingInsightsResponse.json(),
   bookkeepingSummaryResponse.json(),
   reviewQueueResponse.json(),
+  categoriesResponse.json(),
 ])
 
         setCustomers(customersData)
@@ -149,6 +165,7 @@ function App() {
         setAccountingInsights(accountingInsightsData)
         setBookkeepingSummary(bookkeepingSummaryData)
         setReviewQueue(reviewQueueData)
+        setBookkeepingCategories(categoriesData)
         setLoading(false)
       })
       .catch(() => {
@@ -167,6 +184,158 @@ function App() {
 
   if (!overview || !financialSummary || !bookkeepingSummary) {
   return <div className="error-message">No financial data available.</div>
+}
+
+const handleApprove = async (transactionId: number) => {
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:8000/bookkeeping/transactions/${transactionId}/approve`,
+      {
+        method: "POST",
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error("Failed to approve transaction")
+    }
+
+    setReviewQueue((currentQueue) =>
+      currentQueue.filter(
+        (transaction) => transaction.transaction_id !== transactionId
+      )
+    )
+
+    setBookkeepingSummary((currentSummary) => {
+      if (!currentSummary) {
+        return currentSummary
+      }
+
+      return {
+        ...currentSummary,
+        transactions_requiring_review:
+          Math.max(
+            0,
+            currentSummary.transactions_requiring_review - 1
+          ),
+      }
+    })
+  } catch {
+    setError("Could not approve transaction")
+  }
+}
+
+const handleAssignCategory = async (
+  transactionId: number,
+  categoryId: number
+) => {
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:8000/bookkeeping/transactions/${transactionId}/category/${categoryId}`,
+      {
+        method: "POST",
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error("Failed to assign category")
+    }
+
+    setReviewQueue((currentQueue) =>
+      currentQueue.filter(
+        (transaction) =>
+          transaction.transaction_id !== transactionId
+      )
+    )
+
+    setBookkeepingSummary((currentSummary) => {
+      if (!currentSummary) {
+        return currentSummary
+      }
+
+      return {
+        ...currentSummary,
+        transactions_requiring_review:
+          Math.max(
+            0,
+            currentSummary.transactions_requiring_review - 1
+          ),
+      }
+    })
+
+    setSelectedCategories((current) => {
+      const updated = { ...current }
+      delete updated[transactionId]
+      return updated
+    })
+  } catch {
+    setError("Could not assign transaction category")
+  }
+}
+
+const handleReject = async (transactionId: number) => {
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:8000/bookkeeping/transactions/${transactionId}/reject`,
+      {
+        method: "POST",
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error("Failed to reject transaction")
+    }
+
+    const rejectedTransaction = reviewQueue.find(
+      (transaction) => transaction.transaction_id === transactionId
+    )
+
+    setReviewQueue((currentQueue) =>
+      currentQueue.map((transaction) =>
+        transaction.transaction_id === transactionId
+          ? {
+              ...transaction,
+              ai_suggested_category: null,
+              ai_confidence: null,
+            }
+          : transaction
+      )
+    )
+
+    if (!rejectedTransaction) {
+      return
+    }
+  } catch {
+    setError("Could not reject transaction")
+  }
+}
+
+const handleCancel = async (transactionId: number) => {
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:8000/bookkeeping/transactions/${transactionId}/cancel-reject`,
+      {
+        method: "POST",
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error("Failed to cancel rejection")
+    }
+
+    const reviewResponse = await fetch(
+      "http://127.0.0.1:8000/bookkeeping/review-queue"
+    )
+
+    if (!reviewResponse.ok) {
+      throw new Error("Failed to refresh review queue")
+    }
+
+    const refreshedQueue = await reviewResponse.json()
+
+    setReviewQueue(refreshedQueue)
+  } catch {
+    setError("Could not cancel rejection")
+  }
 }
 
   return (
@@ -305,6 +474,75 @@ function App() {
         <span>
           {transaction.status}
         </span>
+        
+{transaction.ai_suggested_category ? (
+  <>
+    <button
+      className="approve-button"
+      onClick={() => handleApprove(transaction.transaction_id)}
+    >
+      Approve
+    </button>
+
+    <button
+      className="reject-button"
+      onClick={() => handleReject(transaction.transaction_id)}
+    >
+      Reject
+    </button>
+  </>
+) : (
+  <>
+  <button
+  className="cancel-button"
+  onClick={() => handleCancel(transaction.transaction_id)}
+>
+  Cancel
+</button>
+    <select
+      value={selectedCategories[transaction.transaction_id] ?? ""}
+      onChange={(event) => {
+        const value = event.target.value
+
+        setSelectedCategories((current) => ({
+          ...current,
+          [transaction.transaction_id]:
+            value === "" ? "" : Number(value),
+        }))
+      }}
+    >
+      <option value="">Select category</option>
+
+      {bookkeepingCategories.map((category) => (
+  <option
+    key={category.category_id}
+    value={category.category_id}
+  >
+    {category.account_code} — {category.account_name}
+  </option>
+))}
+    </select>
+
+    <button
+      className="save-category-button"
+      disabled={!selectedCategories[transaction.transaction_id]}
+      onClick={() => {
+        const categoryId =
+          selectedCategories[transaction.transaction_id]
+
+        if (typeof categoryId === "number") {
+          handleAssignCategory(
+            transaction.transaction_id,
+            categoryId
+          )
+        }
+      }}
+    >
+      Save Category
+    </button>
+  </>
+)}
+
       </div>
     </div>
   ))}

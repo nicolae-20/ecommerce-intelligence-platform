@@ -243,3 +243,93 @@ def get_accounting_insights():
         })
 
     return insights
+
+
+def get_bookkeeping_summary():
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    ROUND(
+                        SUM(
+                            CASE
+                                WHEN transaction_type = 'SALE'
+                                     AND status = 'POSTED'
+                                THEN amount
+                                ELSE 0
+                            END
+                        ),
+                        2
+                    ) AS total_revenue,
+
+                    ROUND(
+                        SUM(
+                            CASE
+                                WHEN transaction_type IN ('EXPENSE', 'BANK_FEE')
+                                     AND status = 'POSTED'
+                                THEN ABS(amount)
+                                ELSE 0
+                            END
+                        ),
+                        2
+                    ) AS total_expenses,
+
+                    ROUND(
+                        SUM(
+                            CASE
+                                WHEN status = 'POSTED'
+                                THEN amount
+                                ELSE 0
+                            END
+                        ),
+                        2
+                    ) AS net_movement,
+
+                    COUNT(
+                        CASE
+                            WHEN category IS NULL
+                                 OR reconciliation_status = 'UNMATCHED'
+                                 OR status = 'PENDING'
+                            THEN 1
+                        END
+                    ) AS transactions_requiring_review
+
+                FROM financial_transactions
+            """)
+
+            return cursor.fetchone()
+    finally:
+        connection.close()
+
+
+def get_transactions_requiring_review():
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    transaction_id,
+                    transaction_date,
+                    transaction_type,
+                    description,
+                    amount,
+                    category,
+                    vendor,
+                    ai_suggested_category,
+                    ai_confidence,
+                    reconciliation_status,
+                    status
+                FROM financial_transactions
+                WHERE
+                    category IS NULL
+                    OR reconciliation_status = 'UNMATCHED'
+                    OR status = 'PENDING'
+                ORDER BY transaction_date
+            """)
+
+            return cursor.fetchall()
+    finally:
+        connection.close()

@@ -164,3 +164,52 @@ section h2 {
   margin: 6px 0 0;
   color: #6b7280;
 }
+
+
+.review-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  padding: 18px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.review-row:last-child {
+  border-bottom: none;
+}
+
+.review-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.review-main span,
+.review-details span {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.review-details {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.review-details strong {
+  font-size: 16px;
+}
+
+@media (max-width: 800px) {
+  .review-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .review-details {
+    justify-content: flex-start;
+  }
+}

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from api.routers import analytics, customers
+from api.routers import analytics, bookkeeping, customers
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -15,3 +15,4 @@ app.add_middleware(
 
 app.include_router(customers.router)
 app.include_router(analytics.router)
+app.include_router(bookkeeping.router)

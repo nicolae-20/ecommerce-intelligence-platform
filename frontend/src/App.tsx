@@ -48,6 +48,27 @@ type AccountingInsight = {
   message: string
 }
 
+type BookkeepingSummary = {
+  total_revenue: number
+  total_expenses: number
+  net_movement: number
+  transactions_requiring_review: number
+}
+
+
+type ReviewTransaction = {
+  transaction_id: number
+  transaction_date: string
+  transaction_type: string
+  description: string | null
+  amount: number
+  category: string | null
+  vendor: string | null
+  ai_suggested_category: string | null
+  ai_confidence: number | null
+  reconciliation_status: string
+  status: string
+}
 
 function App() {
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -58,6 +79,10 @@ function App() {
   useState<FinancialSummary | null>(null)
   const [accountingInsights, setAccountingInsights] =
   useState<AccountingInsight[]>([])
+  const [bookkeepingSummary, setBookkeepingSummary] =
+  useState<BookkeepingSummary | null>(null)
+  const [reviewQueue, setReviewQueue] =
+  useState<ReviewTransaction[]>([])
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -70,6 +95,8 @@ function App() {
       fetch("http://127.0.0.1:8000/analytics/overview"),
       fetch("http://127.0.0.1:8000/analytics/financial-summary"),
       fetch("http://127.0.0.1:8000/analytics/accounting-insights"),
+      fetch("http://127.0.0.1:8000/bookkeeping/summary"),
+      fetch("http://127.0.0.1:8000/bookkeeping/review-queue"),
     ])
       .then(async ([
         customersResponse,
@@ -78,6 +105,8 @@ function App() {
         overviewResponse,
         financialSummaryResponse,
         accountingInsightsResponse,
+        bookkeepingSummaryResponse,
+        reviewQueueResponse,
       ]) => {
         if (
           !customersResponse.ok ||
@@ -85,7 +114,9 @@ function App() {
           !profitResponse.ok ||
           !overviewResponse.ok ||
           !financialSummaryResponse.ok ||
-          !accountingInsightsResponse.ok
+          !accountingInsightsResponse.ok ||
+          !bookkeepingSummaryResponse.ok ||
+          !reviewQueueResponse.ok
         ) {
           throw new Error("Failed to load dashboard data")
         }
@@ -97,6 +128,8 @@ function App() {
   overviewData,
   financialSummaryData,
   accountingInsightsData,
+  bookkeepingSummaryData,
+  reviewQueueData,
 ] = await Promise.all([
   customersResponse.json(),
   revenueResponse.json(),
@@ -104,6 +137,8 @@ function App() {
   overviewResponse.json(),
   financialSummaryResponse.json(),
   accountingInsightsResponse.json(),
+  bookkeepingSummaryResponse.json(),
+  reviewQueueResponse.json(),
 ])
 
         setCustomers(customersData)
@@ -112,6 +147,8 @@ function App() {
         setOverview(overviewData)
         setFinancialSummary(financialSummaryData)
         setAccountingInsights(accountingInsightsData)
+        setBookkeepingSummary(bookkeepingSummaryData)
+        setReviewQueue(reviewQueueData)
         setLoading(false)
       })
       .catch(() => {
@@ -128,7 +165,7 @@ function App() {
     return <div className="error-message">{error}</div>
   }
 
-  if (!overview || !financialSummary) {
+  if (!overview || !financialSummary || !bookkeepingSummary) {
   return <div className="error-message">No financial data available.</div>
 }
 
@@ -197,6 +234,81 @@ function App() {
           </div>
         </div>
       </section>
+      <section>
+  <h2>Bookkeeping Summary</h2>
+
+  <div className="kpi-grid">
+    <div className="kpi-card">
+      <span>Revenue</span>
+      <strong>
+        €{bookkeepingSummary.total_revenue.toFixed(2)}
+      </strong>
+    </div>
+
+    <div className="kpi-card">
+      <span>Expenses</span>
+      <strong>
+        €{bookkeepingSummary.total_expenses.toFixed(2)}
+      </strong>
+    </div>
+
+    <div className="kpi-card">
+      <span>Net Movement</span>
+      <strong>
+        €{bookkeepingSummary.net_movement.toFixed(2)}
+      </strong>
+    </div>
+
+    <div className="kpi-card">
+      <span>Needs Review</span>
+      <strong>
+        {bookkeepingSummary.transactions_requiring_review}
+      </strong>
+    </div>
+  </div>
+</section>
+<section className="dashboard-card">
+  <h2>Transactions Requiring Review</h2>
+
+  {reviewQueue.map((transaction) => (
+    <div className="review-row" key={transaction.transaction_id}>
+      <div className="review-main">
+        <strong>{transaction.description}</strong>
+
+        <span>
+          {transaction.vendor || "No vendor"} ·{" "}
+          {transaction.transaction_type}
+        </span>
+      </div>
+
+      <div className="review-details">
+        <strong>
+          €{transaction.amount.toFixed(2)}
+        </strong>
+
+        <span>
+          AI:{" "}
+          {transaction.ai_suggested_category || "No suggestion"}
+        </span>
+
+        <span>
+          Confidence:{" "}
+          {transaction.ai_confidence !== null
+            ? `${(transaction.ai_confidence * 100).toFixed(0)}%`
+            : "N/A"}
+        </span>
+
+        <span>
+          {transaction.reconciliation_status}
+        </span>
+
+        <span>
+          {transaction.status}
+        </span>
+      </div>
+    </div>
+  ))}
+</section>
       <section className="dashboard-card">
   <h2>Accounting Insights</h2>
 

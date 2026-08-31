@@ -76,3 +76,39 @@ def test_financial_summary():
     assert data["total_cogs"] == 3909.0
     assert data["gross_profit"] == 2327.8
     assert data["gross_margin"] == 37.32
+
+
+def test_bookkeeping_summary():
+    response = client.get("/bookkeeping/summary")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total_revenue"] == 950.0
+    assert data["total_expenses"] == 228.5
+    assert data["net_movement"] == 721.5
+    assert data["transactions_requiring_review"] == 3
+
+
+
+def test_review_queue():
+    response = client.get("/bookkeeping/review-queue")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert len(data) == 3
+
+    assert data[0]["transaction_id"] == 1
+    assert data[0]["ai_suggested_category"] == "Software"
+    assert data[0]["ai_confidence"] == 0.97
+
+    assert data[1]["transaction_id"] == 4
+    assert data[1]["ai_suggested_category"] == "Bank Fees"
+    assert data[1]["ai_confidence"] == 0.99
+
+    assert data[2]["transaction_id"] == 5
+    assert data[2]["ai_suggested_category"] == "Software"
+    assert data[2]["ai_confidence"] == 0.95

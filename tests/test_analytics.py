@@ -5,10 +5,12 @@ sys.path.append(str(Path(__file__).resolve().parents[1] / "python"))
 
 from analytics import (
     get_accounting_insights,
+    get_bookkeeping_summary,
     get_customer_metrics,
     get_financial_summary,
     get_monthly_revenue,
     get_top_customers,
+    get_transactions_requiring_review,
 )
 
 def test_top_customers():
@@ -48,3 +50,27 @@ def test_accounting_insights():
     assert insights[1]["type"] == "margin"
     assert insights[2]["type"] == "top_category"
     assert insights[3]["type"] == "bottom_category"
+
+
+def test_bookkeeping_summary():
+    summary = get_bookkeeping_summary()
+
+    assert summary[0] == 950
+    assert summary[1] == 228.5
+    assert summary[2] == 721.5
+    assert summary[3] == 3
+
+
+def test_transactions_requiring_review():
+    transactions = get_transactions_requiring_review()
+
+    assert len(transactions) == 3
+
+    assert transactions[0][0] == 1
+    assert transactions[0][7] == "Software"
+
+    assert transactions[1][0] == 4
+    assert transactions[1][7] == "Bank Fees"
+
+    assert transactions[2][0] == 5
+    assert transactions[2][7] == "Software"

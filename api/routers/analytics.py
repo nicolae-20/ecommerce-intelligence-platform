@@ -15,6 +15,7 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 from api.schemas.analytics import MonthlyRevenue
 
 from analytics import (
+    get_accounting_insights,
     get_financial_summary,
     get_monthly_revenue,
     get_overview,
@@ -22,6 +23,7 @@ from analytics import (
 )
 
 from api.schemas.analytics import (
+    AccountingInsight,
     CategoryProfit,
     FinancialSummary,
     MonthlyRevenue,
@@ -78,3 +80,11 @@ def financial_summary():
         gross_profit=float(row[2] or 0),
         gross_margin=float(row[3] or 0),
     )
+
+
+@router.get(
+    "/accounting-insights",
+    response_model=list[AccountingInsight],
+)
+def accounting_insights():
+    return get_accounting_insights()

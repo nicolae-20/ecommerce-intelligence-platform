@@ -42,6 +42,13 @@ type FinancialSummary = {
   gross_margin: number
 }
 
+type AccountingInsight = {
+  type: string
+  title: string
+  message: string
+}
+
+
 function App() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyRevenue[]>([])
@@ -49,6 +56,8 @@ function App() {
   const [overview, setOverview] = useState<Overview | null>(null)
   const [financialSummary, setFinancialSummary] =
   useState<FinancialSummary | null>(null)
+  const [accountingInsights, setAccountingInsights] =
+  useState<AccountingInsight[]>([])
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -60,6 +69,7 @@ function App() {
       fetch("http://127.0.0.1:8000/analytics/profit-by-category"),
       fetch("http://127.0.0.1:8000/analytics/overview"),
       fetch("http://127.0.0.1:8000/analytics/financial-summary"),
+      fetch("http://127.0.0.1:8000/analytics/accounting-insights"),
     ])
       .then(async ([
         customersResponse,
@@ -67,13 +77,15 @@ function App() {
         profitResponse,
         overviewResponse,
         financialSummaryResponse,
+        accountingInsightsResponse,
       ]) => {
         if (
           !customersResponse.ok ||
           !revenueResponse.ok ||
           !profitResponse.ok ||
           !overviewResponse.ok ||
-          !financialSummaryResponse.ok
+          !financialSummaryResponse.ok ||
+          !accountingInsightsResponse.ok
         ) {
           throw new Error("Failed to load dashboard data")
         }
@@ -84,12 +96,14 @@ function App() {
   profitData,
   overviewData,
   financialSummaryData,
+  accountingInsightsData,
 ] = await Promise.all([
   customersResponse.json(),
   revenueResponse.json(),
   profitResponse.json(),
   overviewResponse.json(),
   financialSummaryResponse.json(),
+  accountingInsightsResponse.json(),
 ])
 
         setCustomers(customersData)
@@ -97,6 +111,7 @@ function App() {
         setCategoryProfit(profitData)
         setOverview(overviewData)
         setFinancialSummary(financialSummaryData)
+        setAccountingInsights(accountingInsightsData)
         setLoading(false)
       })
       .catch(() => {
@@ -182,6 +197,20 @@ function App() {
           </div>
         </div>
       </section>
+      <section className="dashboard-card">
+  <h2>Accounting Insights</h2>
+
+  <div className="insights-list">
+    {accountingInsights.map((insight) => (
+      <div className="insight-row" key={insight.type}>
+        <div>
+          <strong>{insight.title}</strong>
+          <p>{insight.message}</p>
+        </div>
+      </div>
+    ))}
+  </div>
+</section>
       <section className="dashboard-card">
         <h2>Monthly Revenue</h2>
 

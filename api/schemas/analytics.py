@@ -24,3 +24,9 @@ class FinancialSummary(BaseModel):
     total_cogs: float
     gross_profit: float
     gross_margin: float
+
+
+class AccountingInsight(BaseModel):
+    type: str
+    title: str
+    message: str

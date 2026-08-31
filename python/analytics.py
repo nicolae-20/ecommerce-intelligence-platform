@@ -191,3 +191,55 @@ def get_financial_summary():
             return cursor.fetchone()
     finally:
         connection.close()
+
+
+def get_accounting_insights():
+    financial = get_financial_summary()
+    categories = get_profit_by_category()
+
+    total_revenue = float(financial[0] or 0)
+    total_cogs = float(financial[1] or 0)
+    gross_profit = float(financial[2] or 0)
+    gross_margin = float(financial[3] or 0)
+
+    insights = []
+
+    insights.append({
+        "type": "financial_summary",
+        "title": "Gross profit overview",
+        "message": (
+            f"Revenue is €{total_revenue:.2f}, "
+            f"COGS is €{total_cogs:.2f}, "
+            f"and gross profit is €{gross_profit:.2f}."
+        )
+    })
+
+    insights.append({
+        "type": "margin",
+        "title": "Gross margin",
+        "message": f"Gross margin is {gross_margin:.2f}%."
+    })
+
+    if categories:
+        top_category = categories[0]
+        bottom_category = categories[-1]
+
+        insights.append({
+            "type": "top_category",
+            "title": "Most profitable category",
+            "message": (
+                f"{top_category[0]} generated "
+                f"€{float(top_category[3]):.2f} in profit."
+            )
+        })
+
+        insights.append({
+            "type": "bottom_category",
+            "title": "Lowest profitable category",
+            "message": (
+                f"{bottom_category[0]} generated "
+                f"€{float(bottom_category[3]):.2f} in profit."
+            )
+        })
+
+    return insights

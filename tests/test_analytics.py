@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1] / "python"))
 
 from analytics import (
+    get_accounting_insights,
     get_customer_metrics,
     get_financial_summary,
     get_monthly_revenue,
@@ -38,3 +39,12 @@ def test_financial_summary():
     assert summary[1] == 3909
     assert summary[2] == 2327.8
     assert summary[3] == 37.32
+
+def test_accounting_insights():
+    insights = get_accounting_insights()
+
+    assert len(insights) == 4
+    assert insights[0]["type"] == "financial_summary"
+    assert insights[1]["type"] == "margin"
+    assert insights[2]["type"] == "top_category"
+    assert insights[3]["type"] == "bottom_category"

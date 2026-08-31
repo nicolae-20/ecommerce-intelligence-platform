@@ -35,11 +35,20 @@ type Overview = {
   average_order_value: number
 }
 
+type FinancialSummary = {
+  total_revenue: number
+  total_cogs: number
+  gross_profit: number
+  gross_margin: number
+}
+
 function App() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyRevenue[]>([])
   const [categoryProfit, setCategoryProfit] = useState<CategoryProfit[]>([])
   const [overview, setOverview] = useState<Overview | null>(null)
+  const [financialSummary, setFinancialSummary] =
+  useState<FinancialSummary | null>(null)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -50,38 +59,44 @@ function App() {
       fetch("http://127.0.0.1:8000/analytics/monthly-revenue"),
       fetch("http://127.0.0.1:8000/analytics/profit-by-category"),
       fetch("http://127.0.0.1:8000/analytics/overview"),
+      fetch("http://127.0.0.1:8000/analytics/financial-summary"),
     ])
       .then(async ([
         customersResponse,
         revenueResponse,
         profitResponse,
         overviewResponse,
+        financialSummaryResponse,
       ]) => {
         if (
           !customersResponse.ok ||
           !revenueResponse.ok ||
           !profitResponse.ok ||
-          !overviewResponse.ok
+          !overviewResponse.ok ||
+          !financialSummaryResponse.ok
         ) {
           throw new Error("Failed to load dashboard data")
         }
 
         const [
-          customersData,
-          revenueData,
-          profitData,
-          overviewData,
-        ] = await Promise.all([
-          customersResponse.json(),
-          revenueResponse.json(),
-          profitResponse.json(),
-          overviewResponse.json(),
-        ])
+  customersData,
+  revenueData,
+  profitData,
+  overviewData,
+  financialSummaryData,
+] = await Promise.all([
+  customersResponse.json(),
+  revenueResponse.json(),
+  profitResponse.json(),
+  overviewResponse.json(),
+  financialSummaryResponse.json(),
+])
 
         setCustomers(customersData)
         setMonthlyRevenue(revenueData)
         setCategoryProfit(profitData)
         setOverview(overviewData)
+        setFinancialSummary(financialSummaryData)
         setLoading(false)
       })
       .catch(() => {
@@ -98,9 +113,9 @@ function App() {
     return <div className="error-message">{error}</div>
   }
 
-  if (!overview) {
-    return <div className="error-message">No overview data available.</div>
-  }
+  if (!overview || !financialSummary) {
+  return <div className="error-message">No financial data available.</div>
+}
 
   return (
     <main className="dashboard">
@@ -134,7 +149,39 @@ function App() {
           </div>
         </div>
       </section>
+            <section>
+        <h2>Financial Performance</h2>
 
+        <div className="kpi-grid">
+          <div className="kpi-card">
+            <span>Revenue</span>
+            <strong>
+              €{financialSummary.total_revenue.toFixed(2)}
+            </strong>
+          </div>
+
+          <div className="kpi-card">
+            <span>COGS</span>
+            <strong>
+              €{financialSummary.total_cogs.toFixed(2)}
+            </strong>
+          </div>
+
+          <div className="kpi-card">
+            <span>Gross Profit</span>
+            <strong>
+              €{financialSummary.gross_profit.toFixed(2)}
+            </strong>
+          </div>
+
+          <div className="kpi-card">
+            <span>Gross Margin</span>
+            <strong>
+              {financialSummary.gross_margin.toFixed(2)}%
+            </strong>
+          </div>
+        </div>
+      </section>
       <section className="dashboard-card">
         <h2>Monthly Revenue</h2>
 

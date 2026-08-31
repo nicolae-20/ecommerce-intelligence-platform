@@ -460,3 +460,56 @@ def cancel_transaction_rejection(transaction_id):
             return True
     finally:
         connection.close()
+
+
+
+
+
+def run_reconciliation():
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                BEGIN
+                    reconcile_bank_transactions;
+                END;
+            """)
+
+            connection.commit()
+            return True
+    finally:
+        connection.close()
+
+def get_reconciliation_review_queue():
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    bt.bank_transaction_id,
+                    bt.transaction_date,
+                    bt.description,
+                    bt.amount,
+                    bt.status,
+                    bt.financial_transaction_id,
+                    bt.match_type,
+                    bt.match_confidence,
+                    ft.transaction_date,
+                    ft.description,
+                    ft.amount
+                FROM bank_transactions bt
+                LEFT JOIN financial_transactions ft
+                    ON ft.transaction_id = bt.financial_transaction_id
+                WHERE bt.status = 'UNMATCHED'
+                  AND bt.match_type IN (
+                      'POSSIBLE_MATCH',
+                      'NO_MATCH'
+                  )
+                ORDER BY bt.bank_transaction_id
+            """)
+
+            return cursor.fetchall()
+    finally:
+        connection.close()

@@ -77,6 +77,20 @@ type BookkeepingCategory = {
   account_type: string
 }
 
+type ReconciliationReviewItem = {
+  bank_transaction_id: number
+  bank_date: string
+  bank_description: string | null
+  bank_amount: number
+  status: string
+  financial_transaction_id: number | null
+  match_type: string
+  match_confidence: number
+  system_date: string | null
+  system_description: string | null
+  system_amount: number | null
+}
+
 function App() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyRevenue[]>([])
@@ -94,6 +108,8 @@ function App() {
   useState<BookkeepingCategory[]>([])
   const [selectedCategories, setSelectedCategories] =
   useState<Record<number, number | "">>({})
+  const [reconciliationReview, setReconciliationReview] =
+  useState<ReconciliationReviewItem[]>([])
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -109,6 +125,9 @@ function App() {
       fetch("http://127.0.0.1:8000/bookkeeping/summary"),
       fetch("http://127.0.0.1:8000/bookkeeping/review-queue"),
       fetch("http://127.0.0.1:8000/bookkeeping/categories"),
+      fetch(
+  "http://127.0.0.1:8000/bookkeeping/reconciliation-review"
+),
     ])
       .then(async ([
         customersResponse,
@@ -120,6 +139,7 @@ function App() {
         bookkeepingSummaryResponse,
         reviewQueueResponse,
         categoriesResponse,
+        reconciliationReviewResponse,
       ]) => {
         if (
           !customersResponse.ok ||
@@ -130,7 +150,8 @@ function App() {
           !accountingInsightsResponse.ok ||
           !bookkeepingSummaryResponse.ok ||
           !reviewQueueResponse.ok ||
-          !categoriesResponse.ok
+          !categoriesResponse.ok ||
+          !reconciliationReviewResponse.ok
         ) {
           throw new Error("Failed to load dashboard data")
         }
@@ -145,6 +166,7 @@ function App() {
   bookkeepingSummaryData,
   reviewQueueData,
   categoriesData,
+  reconciliationReviewData,
 ] = await Promise.all([
   customersResponse.json(),
   revenueResponse.json(),
@@ -155,6 +177,7 @@ function App() {
   bookkeepingSummaryResponse.json(),
   reviewQueueResponse.json(),
   categoriesResponse.json(),
+  reviewQueueResponse.json(),
 ])
 
         setCustomers(customersData)
@@ -166,6 +189,7 @@ function App() {
         setBookkeepingSummary(bookkeepingSummaryData)
         setReviewQueue(reviewQueueData)
         setBookkeepingCategories(categoriesData)
+        setReconciliationReview(reconciliationReviewData)
         setLoading(false)
       })
       .catch(() => {
@@ -546,6 +570,63 @@ const handleCancel = async (transactionId: number) => {
       </div>
     </div>
   ))}
+</section>
+<section className="dashboard-card">
+  <h2>Reconciliation Review</h2>
+
+  {reconciliationReview.length === 0 ? (
+    <p className="empty-state">
+      No reconciliation items require review.
+    </p>
+  ) : (
+    reconciliationReview.map((item) => (
+      <div
+        className="review-row"
+        key={item.bank_transaction_id}
+      >
+        <div className="review-main">
+          <strong>
+            {item.bank_description || "No description"}
+          </strong>
+
+          <span>
+            {new Date(item.bank_date).toLocaleDateString()} · Bank transaction
+          </span>
+        </div>
+
+        <div className="review-details">
+          <strong>
+            €{item.bank_amount.toFixed(2)}
+          </strong>
+
+          <span>
+            {item.match_type}
+          </span>
+
+          <span>
+            Confidence:{" "}
+            {(item.match_confidence * 100).toFixed(0)}%
+          </span>
+
+          {item.system_description ? (
+            <span>
+              Possible match: {item.system_description}
+            </span>
+          ) : (
+            <span>
+              No matching transaction found
+            </span>
+          )}
+
+          {item.system_amount !== null && (
+            <span>
+              System amount: €{item.system_amount.toFixed(2)}
+            </span>
+          )}
+        </div>
+      </div>
+    ))
+  )}
 </section>
       <section className="dashboard-card">
   <h2>Accounting Insights</h2>

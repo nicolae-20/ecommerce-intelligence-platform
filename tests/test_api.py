@@ -263,3 +263,79 @@ def test_cancel_reject():
             assert row[1] == 0.97
     finally:
         connection.close()
+
+
+
+def test_reconciliation_review():
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL,
+                    match_type = NULL,
+                    match_confidence = NULL
+                WHERE bank_transaction_id IN (1, 2, 3, 4)
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+    from analytics import run_reconciliation
+
+    result = run_reconciliation()
+
+    assert result is True
+
+    response = client.get("/bookkeeping/reconciliation-review")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert len(data) == 2
+
+    items_by_type = {
+        item["match_type"]: item
+        for item in data
+    }
+
+    possible_match = items_by_type["POSSIBLE_MATCH"]
+
+    assert possible_match["bank_transaction_id"] == 4
+    assert possible_match["status"] == "UNMATCHED"
+    assert possible_match["financial_transaction_id"] == 5
+    assert possible_match["match_confidence"] == 0.9
+    assert possible_match["system_description"] == "Microsoft 365"
+
+    no_match = items_by_type["NO_MATCH"]
+
+    assert no_match["bank_transaction_id"] == 3
+    assert no_match["status"] == "UNMATCHED"
+    assert no_match["financial_transaction_id"] is None
+    assert no_match["match_confidence"] == 0
+    assert no_match["system_description"] is None
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL,
+                    match_type = NULL,
+                    match_confidence = NULL
+                WHERE bank_transaction_id IN (1, 2, 3, 4)
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()

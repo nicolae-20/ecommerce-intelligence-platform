@@ -16,6 +16,8 @@ from analytics import (
     reject_transaction_category,
     assign_transaction_category,
     cancel_transaction_rejection,
+    run_reconciliation,
+    get_reconciliation_review_queue,
 )
 
 def test_top_customers():
@@ -149,6 +151,7 @@ def test_bookkeeping_categories():
     assert categories[4][3] == "EXPENSE"
 
 
+
 def test_assign_transaction_category():
     result = assign_transaction_category(1, 1)
 
@@ -237,6 +240,155 @@ def test_cancel_transaction_rejection():
                     category = NULL,
                     reconciliation_status = 'UNMATCHED'
                 WHERE transaction_id = 1
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+
+def test_reconcile_bank_transactions():
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL
+                WHERE bank_transaction_id IN (1, 2, 3)
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+    result = run_reconciliation()
+
+    assert result is True
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+    bank_transaction_id,
+    status,
+    financial_transaction_id,
+    match_type,
+    match_confidence
+                FROM bank_transactions
+                WHERE bank_transaction_id IN (1, 2, 3, 4)
+                ORDER BY bank_transaction_id
+            """)
+
+            rows = cursor.fetchall()
+
+            assert rows[0][0] == 1
+            assert rows[0][1] == "MATCHED"
+            assert rows[0][2] == 3
+            assert rows[0][3] == "EXACT_MATCH"
+            assert rows[0][4] == 1
+
+            assert rows[1][0] == 2
+            assert rows[1][1] == "MATCHED"
+            assert rows[1][2] == 1
+            assert rows[1][3] == "EXACT_MATCH"
+            assert rows[1][4] == 1
+
+            assert rows[2][0] == 3
+            assert rows[2][1] == "UNMATCHED"
+            assert rows[2][2] is None
+            assert rows[2][3] == "NO_MATCH"
+            assert rows[2][4] == 0
+
+            assert rows[3][0] == 4
+            assert rows[3][1] == "UNMATCHED"
+            assert rows[3][2] == 5
+            assert rows[3][3] == "POSSIBLE_MATCH"
+            assert rows[3][4] == 0.9
+
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL
+                WHERE bank_transaction_id IN (1, 2, 3, 4)
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+
+def test_reconciliation_review_queue():
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL,
+                    match_type = NULL,
+                    match_confidence = NULL
+                WHERE bank_transaction_id IN (1, 2, 3, 4)
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+    result = run_reconciliation()
+
+    assert result is True
+
+    rows = get_reconciliation_review_queue()
+
+    assert len(rows) == 2
+
+    rows_by_match_type = {
+        row[6]: row
+        for row in rows
+    }
+
+    possible_match = rows_by_match_type["POSSIBLE_MATCH"]
+
+    assert possible_match[0] == 4
+    assert possible_match[4] == "UNMATCHED"
+    assert possible_match[5] == 5
+    assert possible_match[6] == "POSSIBLE_MATCH"
+    assert possible_match[7] == 0.9
+    assert possible_match[9] == "Microsoft 365"
+
+    no_match = rows_by_match_type["NO_MATCH"]
+
+    assert no_match[0] == 3
+    assert no_match[4] == "UNMATCHED"
+    assert no_match[5] is None
+    assert no_match[6] == "NO_MATCH"
+    assert no_match[7] == 0
+    assert no_match[9] is None
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL,
+                    match_type = NULL,
+                    match_confidence = NULL
+                WHERE bank_transaction_id IN (1, 2, 3, 4)
             """)
 
             connection.commit()

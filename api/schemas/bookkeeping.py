@@ -32,3 +32,17 @@ class BookkeepingCategory(BaseModel):
     account_code: str
     account_name: str
     account_type: str
+
+
+class ReconciliationReviewItem(BaseModel):
+    bank_transaction_id: int
+    bank_date: str
+    bank_description: str | None
+    bank_amount: float
+    status: str
+    financial_transaction_id: int | None
+    match_type: str
+    match_confidence: float
+    system_date: str | None
+    system_description: str | None
+    system_amount: float | None

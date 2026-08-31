@@ -13,6 +13,7 @@ from analytics import (
     get_bookkeeping_summary,
     get_transactions_requiring_review,
     reject_transaction_category,
+    get_reconciliation_review_queue,
 )
 
 from api.schemas.bookkeeping import (
@@ -20,6 +21,7 @@ from api.schemas.bookkeeping import (
     BookkeepingSummary,
     ReviewTransaction,
     TransactionActionResponse,
+    ReconciliationReviewItem,
 )
 
 
@@ -158,3 +160,28 @@ def cancel_reject(transaction_id: int):
         success=True,
         message="AI category suggestion restored.",
     )
+
+
+@router.get(
+    "/reconciliation-review",
+    response_model=list[ReconciliationReviewItem],
+)
+def reconciliation_review():
+    rows = get_reconciliation_review_queue()
+
+    return [
+        ReconciliationReviewItem(
+            bank_transaction_id=row[0],
+            bank_date=row[1].isoformat(),
+            bank_description=row[2],
+            bank_amount=float(row[3]),
+            status=row[4],
+            financial_transaction_id=row[5],
+            match_type=row[6],
+            match_confidence=float(row[7]),
+            system_date=row[8].isoformat() if row[8] else None,
+            system_description=row[9],
+            system_amount=float(row[10]) if row[10] is not None else None,
+        )
+        for row in rows
+    ]

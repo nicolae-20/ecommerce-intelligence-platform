@@ -177,7 +177,7 @@ function App() {
   bookkeepingSummaryResponse.json(),
   reviewQueueResponse.json(),
   categoriesResponse.json(),
-  reviewQueueResponse.json(),
+  reconciliationReviewResponse.json(),
 ])
 
         setCustomers(customersData)
@@ -192,10 +192,15 @@ function App() {
         setReconciliationReview(reconciliationReviewData)
         setLoading(false)
       })
-      .catch(() => {
-        setError("Could not load dashboard data")
-        setLoading(false)
-      })
+      .catch((error) => {
+  console.error("Dashboard load error:", error)
+  setError(
+    error instanceof Error
+      ? error.message
+      : "Could not load dashboard data"
+  )
+  setLoading(false)
+})
   }, [])
 
   if (loading) {

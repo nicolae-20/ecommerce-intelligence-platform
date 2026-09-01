@@ -513,3 +513,25 @@ def get_reconciliation_review_queue():
             return cursor.fetchall()
     finally:
         connection.close()
+
+def confirm_bank_transaction_match(bank_transaction_id):
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'MATCHED'
+                WHERE bank_transaction_id = :bank_transaction_id
+                  AND match_type = 'POSSIBLE_MATCH'
+                  AND financial_transaction_id IS NOT NULL
+            """, {"bank_transaction_id": bank_transaction_id})
+
+            if cursor.rowcount == 0:
+                return False
+
+            connection.commit()
+            return True
+    finally:
+        connection.close()

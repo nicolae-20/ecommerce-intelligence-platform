@@ -17,6 +17,8 @@ from analytics import (
     confirm_bank_transaction_match,
     reject_bank_transaction_match,
     investigate_bank_transaction,
+    get_audit_log,
+    run_reconciliation,
 )
 
 from api.schemas.bookkeeping import (
@@ -25,6 +27,7 @@ from api.schemas.bookkeeping import (
     ReviewTransaction,
     TransactionActionResponse,
     ReconciliationReviewItem,
+    AuditLogItem,
 )
 
 
@@ -209,6 +212,7 @@ def confirm_reconciliation(bank_transaction_id: int):
     )
 
 
+
 @router.post(
     "/reconciliation/{bank_transaction_id}/reject",
     response_model=TransactionActionResponse,
@@ -243,4 +247,42 @@ def investigate_reconciliation(bank_transaction_id: int):
     return TransactionActionResponse(
         success=True,
         message="Bank transaction marked as investigated.",
+    )
+
+
+@router.get(
+    "/audit-log",
+    response_model=list[AuditLogItem],
+)
+def audit_log():
+    rows = get_audit_log()
+
+    return [
+        AuditLogItem(
+            audit_id=row[0],
+            bank_transaction_id=row[1],
+            financial_transaction_id=row[2],
+            action=row[3],
+            details=row[4],
+            created_at=row[5].isoformat(),
+        )
+        for row in rows
+    ]
+
+@router.post(
+    "/reconciliation/run",
+    response_model=TransactionActionResponse,
+)
+def run_reconciliation_endpoint():
+    success = run_reconciliation()
+
+    if not success:
+        return TransactionActionResponse(
+            success=False,
+            message="Reconciliation could not be completed.",
+        )
+
+    return TransactionActionResponse(
+        success=True,
+        message="Reconciliation completed successfully.",
     )

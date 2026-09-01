@@ -21,6 +21,8 @@ from analytics import (
     reject_bank_transaction_match,
     confirm_bank_transaction_match,
     investigate_bank_transaction,
+    log_audit_event,
+    get_audit_log,
 )
 
 def test_top_customers():
@@ -86,20 +88,24 @@ def test_transactions_requiring_review():
     assert transactions[2][7] == "Software"
 
 def test_approve_transaction_category():
-    result = approve_transaction_category(1)
-
-    assert result is True
-
-    from analytics import get_connection
+    from database import get_connection
 
     connection = get_connection()
 
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
+                DELETE FROM audit_log
+                WHERE financial_transaction_id = 1
+                  AND action = 'CATEGORY_APPROVED'
+            """)
+
+            cursor.execute("""
                 UPDATE financial_transactions
                 SET
-                    category = NULL,
+                    ai_suggested_category = 'Software',
+                    ai_confidence = 0.97,
+                    accounting_category_id = NULL,
                     reconciliation_status = 'UNMATCHED'
                 WHERE transaction_id = 1
             """)
@@ -108,12 +114,67 @@ def test_approve_transaction_category():
     finally:
         connection.close()
 
-
-def test_reject_transaction_category():
-    result = reject_transaction_category(1)
+    result = approve_transaction_category(1)
 
     assert result is True
 
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    accounting_category_id,
+                    reconciliation_status
+                FROM financial_transactions
+                WHERE transaction_id = 1
+            """)
+
+            row = cursor.fetchone()
+
+            assert row[0] == 3
+            assert row[1] == "MATCHED"
+
+            cursor.execute("""
+                SELECT
+                    financial_transaction_id,
+                    action,
+                    details
+                FROM audit_log
+                WHERE financial_transaction_id = 1
+                  AND action = 'CATEGORY_APPROVED'
+                ORDER BY audit_id DESC
+                FETCH FIRST 1 ROW ONLY
+            """)
+
+            audit_row = cursor.fetchone()
+
+            assert audit_row[0] == 1
+            assert audit_row[1] == "CATEGORY_APPROVED"
+            assert audit_row[2] == (
+                "User approved AI-suggested accounting category."
+            )
+
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET
+                    accounting_category_id = NULL,
+                    reconciliation_status = 'UNMATCHED'
+                WHERE transaction_id = 1
+            """)
+
+            cursor.execute("""
+                DELETE FROM audit_log
+                WHERE financial_transaction_id = 1
+                  AND action = 'CATEGORY_APPROVED'
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+
+def test_reject_transaction_category():
     from database import get_connection
 
     connection = get_connection()
@@ -121,11 +182,68 @@ def test_reject_transaction_category():
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
+                DELETE FROM audit_log
+                WHERE financial_transaction_id = 1
+                  AND action = 'CATEGORY_REJECTED'
+            """)
+
+            cursor.execute("""
                 UPDATE financial_transactions
                 SET
                     ai_suggested_category = 'Software',
                     ai_confidence = 0.97
                 WHERE transaction_id = 1
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+    result = reject_transaction_category(1)
+
+    assert result is True
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    ai_suggested_category,
+                    ai_confidence
+                FROM financial_transactions
+                WHERE transaction_id = 1
+            """)
+
+            row = cursor.fetchone()
+
+            assert row[0] is None
+            assert row[1] is None
+
+            cursor.execute("""
+                SELECT
+                    financial_transaction_id,
+                    action,
+                    details
+                FROM audit_log
+                WHERE financial_transaction_id = 1
+                  AND action = 'CATEGORY_REJECTED'
+                ORDER BY audit_id DESC
+                FETCH FIRST 1 ROW ONLY
+            """)
+
+            audit_row = cursor.fetchone()
+
+            assert audit_row[0] == 1
+            assert audit_row[1] == "CATEGORY_REJECTED"
+            assert audit_row[2] == (
+                "User rejected AI-suggested accounting category."
+            )
+
+            cursor.execute("""
+                DELETE FROM audit_log
+                WHERE financial_transaction_id = 1
+                  AND action = 'CATEGORY_REJECTED'
             """)
 
             connection.commit()
@@ -196,14 +314,21 @@ def test_assign_transaction_category():
 def test_cancel_transaction_rejection():
     from database import get_connection
 
-    # Simulate a rejected AI suggestion.
     connection = get_connection()
 
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
+                DELETE FROM audit_log
+                WHERE financial_transaction_id = 1
+                  AND action = 'REJECTION_CANCELLED'
+            """)
+
+            cursor.execute("""
                 UPDATE financial_transactions
                 SET
+                    original_ai_category = 'Software',
+                    original_ai_confidence = 0.97,
                     ai_suggested_category = NULL,
                     ai_confidence = NULL
                 WHERE transaction_id = 1
@@ -234,15 +359,30 @@ def test_cancel_transaction_rejection():
             assert row[0] == "Software"
             assert row[1] == 0.97
 
-            # Restore demo state.
             cursor.execute("""
-                UPDATE financial_transactions
-                SET
-                    ai_suggested_category = 'Software',
-                    ai_confidence = 0.97,
-                    category = NULL,
-                    reconciliation_status = 'UNMATCHED'
-                WHERE transaction_id = 1
+                SELECT
+                    financial_transaction_id,
+                    action,
+                    details
+                FROM audit_log
+                WHERE financial_transaction_id = 1
+                  AND action = 'REJECTION_CANCELLED'
+                ORDER BY audit_id DESC
+                FETCH FIRST 1 ROW ONLY
+            """)
+
+            audit_row = cursor.fetchone()
+
+            assert audit_row[0] == 1
+            assert audit_row[1] == "REJECTION_CANCELLED"
+            assert audit_row[2] == (
+                "User cancelled category rejection and restored AI suggestion."
+            )
+
+            cursor.execute("""
+                DELETE FROM audit_log
+                WHERE financial_transaction_id = 1
+                  AND action = 'REJECTION_CANCELLED'
             """)
 
             connection.commit()
@@ -411,12 +551,19 @@ def test_reject_bank_transaction_match():
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
+                DELETE FROM audit_log
+                WHERE bank_transaction_id = 4
+                  AND action = 'RECONCILIATION_REJECTED'
+            """)
+
+            cursor.execute("""
                 UPDATE bank_transactions
                 SET
                     status = 'UNMATCHED',
                     financial_transaction_id = 5,
                     match_type = 'POSSIBLE_MATCH',
-                    match_confidence = 0.90
+                    match_confidence = 0.90,
+                    investigation_status = NULL
                 WHERE bank_transaction_id = 4
             """)
 
@@ -449,15 +596,43 @@ def test_reject_bank_transaction_match():
             assert row[2] == "NO_MATCH"
             assert row[3] == 0
 
-            # Restore the demo state.
+            cursor.execute("""
+                SELECT
+                    bank_transaction_id,
+                    financial_transaction_id,
+                    action,
+                    details
+                FROM audit_log
+                WHERE bank_transaction_id = 4
+                  AND action = 'RECONCILIATION_REJECTED'
+                ORDER BY audit_id DESC
+                FETCH FIRST 1 ROW ONLY
+            """)
+
+            audit_row = cursor.fetchone()
+
+            assert audit_row[0] == 4
+            assert audit_row[1] is None
+            assert audit_row[2] == "RECONCILIATION_REJECTED"
+            assert audit_row[3] == (
+                "User rejected possible reconciliation match."
+            )
+
             cursor.execute("""
                 UPDATE bank_transactions
                 SET
                     status = 'UNMATCHED',
                     financial_transaction_id = NULL,
                     match_type = NULL,
-                    match_confidence = NULL
+                    match_confidence = NULL,
+                    investigation_status = NULL
                 WHERE bank_transaction_id = 4
+            """)
+
+            cursor.execute("""
+                DELETE FROM audit_log
+                WHERE bank_transaction_id = 4
+                  AND action = 'RECONCILIATION_REJECTED'
             """)
 
             connection.commit()
@@ -473,12 +648,19 @@ def test_confirm_bank_transaction_match():
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
+                DELETE FROM audit_log
+                WHERE bank_transaction_id = 4
+                  AND action = 'RECONCILIATION_CONFIRMED'
+            """)
+
+            cursor.execute("""
                 UPDATE bank_transactions
                 SET
                     status = 'UNMATCHED',
                     financial_transaction_id = 5,
                     match_type = 'POSSIBLE_MATCH',
-                    match_confidence = 0.90
+                    match_confidence = 0.90,
+                    investigation_status = NULL
                 WHERE bank_transaction_id = 4
             """)
 
@@ -511,15 +693,43 @@ def test_confirm_bank_transaction_match():
             assert row[2] == "POSSIBLE_MATCH"
             assert row[3] == 0.90
 
-            # Restore the demo state.
+            cursor.execute("""
+                SELECT
+                    bank_transaction_id,
+                    financial_transaction_id,
+                    action,
+                    details
+                FROM audit_log
+                WHERE bank_transaction_id = 4
+                  AND action = 'RECONCILIATION_CONFIRMED'
+                ORDER BY audit_id DESC
+                FETCH FIRST 1 ROW ONLY
+            """)
+
+            audit_row = cursor.fetchone()
+
+            assert audit_row[0] == 4
+            assert audit_row[1] == 5
+            assert audit_row[2] == "RECONCILIATION_CONFIRMED"
+            assert audit_row[3] == (
+                "User confirmed possible reconciliation match."
+            )
+
             cursor.execute("""
                 UPDATE bank_transactions
                 SET
                     status = 'UNMATCHED',
                     financial_transaction_id = NULL,
                     match_type = NULL,
-                    match_confidence = NULL
+                    match_confidence = NULL,
+                    investigation_status = NULL
                 WHERE bank_transaction_id = 4
+            """)
+
+            cursor.execute("""
+                DELETE FROM audit_log
+                WHERE bank_transaction_id = 4
+                  AND action = 'RECONCILIATION_CONFIRMED'
             """)
 
             connection.commit()
@@ -534,6 +744,12 @@ def test_investigate_bank_transaction():
 
     try:
         with connection.cursor() as cursor:
+            cursor.execute("""
+                DELETE FROM audit_log
+                WHERE bank_transaction_id = 3
+                  AND action = 'TRANSACTION_INVESTIGATED'
+            """)
+
             cursor.execute("""
                 UPDATE bank_transactions
                 SET
@@ -573,6 +789,28 @@ def test_investigate_bank_transaction():
             assert row[2] == "INVESTIGATED"
 
             cursor.execute("""
+                SELECT
+                    bank_transaction_id,
+                    financial_transaction_id,
+                    action,
+                    details
+                FROM audit_log
+                WHERE bank_transaction_id = 3
+                  AND action = 'TRANSACTION_INVESTIGATED'
+                ORDER BY audit_id DESC
+                FETCH FIRST 1 ROW ONLY
+            """)
+
+            audit_row = cursor.fetchone()
+
+            assert audit_row[0] == 3
+            assert audit_row[1] is None
+            assert audit_row[2] == "TRANSACTION_INVESTIGATED"
+            assert audit_row[3] == (
+                "User marked unmatched bank transaction as investigated."
+            )
+
+            cursor.execute("""
                 UPDATE bank_transactions
                 SET
                     status = 'UNMATCHED',
@@ -581,6 +819,93 @@ def test_investigate_bank_transaction():
                     match_confidence = NULL,
                     investigation_status = NULL
                 WHERE bank_transaction_id = 3
+            """)
+
+            cursor.execute("""
+                DELETE FROM audit_log
+                WHERE bank_transaction_id = 3
+                  AND action = 'TRANSACTION_INVESTIGATED'
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+
+def test_log_audit_event():
+    result = log_audit_event(
+        action="TEST_AUDIT",
+        bank_transaction_id=3,
+        details="Test audit event",
+    )
+
+    assert result is True
+
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    bank_transaction_id,
+                    financial_transaction_id,
+                    action,
+                    details
+                FROM audit_log
+                WHERE action = 'TEST_AUDIT'
+                ORDER BY audit_id DESC
+                FETCH FIRST 1 ROW ONLY
+            """)
+
+            row = cursor.fetchone()
+
+            assert row[0] == 3
+            assert row[1] is None
+            assert row[2] == "TEST_AUDIT"
+            assert row[3] == "Test audit event"
+
+            cursor.execute("""
+                DELETE FROM audit_log
+                WHERE action = 'TEST_AUDIT'
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+
+def test_get_audit_log():
+    from database import get_connection
+
+    result = log_audit_event(
+        action="TEST_AUDIT_QUERY",
+        bank_transaction_id=3,
+        details="Test audit query event",
+    )
+
+    assert result is True
+
+    rows = get_audit_log()
+
+    assert len(rows) >= 1
+
+    latest = rows[0]
+
+    assert latest[1] == 3
+    assert latest[2] is None
+    assert latest[3] == "TEST_AUDIT_QUERY"
+    assert latest[4] == "Test audit query event"
+    assert latest[5] is not None
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                DELETE FROM audit_log
+                WHERE action = 'TEST_AUDIT_QUERY'
             """)
 
             connection.commit()

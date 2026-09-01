@@ -360,6 +360,21 @@ def approve_transaction_category(transaction_id):
             if cursor.rowcount == 0:
                 return False
 
+            cursor.execute("""
+                INSERT INTO audit_log (
+                    financial_transaction_id,
+                    action,
+                    details
+                )
+                VALUES (
+                    :financial_transaction_id,
+                    'CATEGORY_APPROVED',
+                    'User approved AI-suggested accounting category.'
+                )
+            """, {
+                "financial_transaction_id": transaction_id,
+            })
+
             connection.commit()
             return True
     finally:
@@ -373,13 +388,29 @@ def reject_transaction_category(transaction_id):
         with connection.cursor() as cursor:
             cursor.execute("""
                 UPDATE financial_transactions
-                SET ai_suggested_category = NULL,
+                SET
+                    ai_suggested_category = NULL,
                     ai_confidence = NULL
                 WHERE transaction_id = :transaction_id
             """, {"transaction_id": transaction_id})
 
             if cursor.rowcount == 0:
                 return False
+
+            cursor.execute("""
+                INSERT INTO audit_log (
+                    financial_transaction_id,
+                    action,
+                    details
+                )
+                VALUES (
+                    :financial_transaction_id,
+                    'CATEGORY_REJECTED',
+                    'User rejected AI-suggested accounting category.'
+                )
+            """, {
+                "financial_transaction_id": transaction_id,
+            })
 
             connection.commit()
             return True
@@ -456,13 +487,25 @@ def cancel_transaction_rejection(transaction_id):
             if cursor.rowcount == 0:
                 return False
 
+            cursor.execute("""
+                INSERT INTO audit_log (
+                    financial_transaction_id,
+                    action,
+                    details
+                )
+                VALUES (
+                    :financial_transaction_id,
+                    'REJECTION_CANCELLED',
+                    'User cancelled category rejection and restored AI suggestion.'
+                )
+            """, {
+                "financial_transaction_id": transaction_id,
+            })
+
             connection.commit()
             return True
     finally:
         connection.close()
-
-
-
 
 
 def run_reconciliation():
@@ -538,6 +581,23 @@ def reject_bank_transaction_match(bank_transaction_id):
             if cursor.rowcount == 0:
                 return False
 
+            cursor.execute("""
+                INSERT INTO audit_log (
+                    bank_transaction_id,
+                    financial_transaction_id,
+                    action,
+                    details
+                )
+                VALUES (
+                    :bank_transaction_id,
+                    NULL,
+                    'RECONCILIATION_REJECTED',
+                    'User rejected possible reconciliation match.'
+                )
+            """, {
+                "bank_transaction_id": bank_transaction_id,
+            })
+
             connection.commit()
             return True
     finally:
@@ -561,6 +621,23 @@ def investigate_bank_transaction(bank_transaction_id):
             if cursor.rowcount == 0:
                 return False
 
+            cursor.execute("""
+                INSERT INTO audit_log (
+                    bank_transaction_id,
+                    financial_transaction_id,
+                    action,
+                    details
+                )
+                VALUES (
+                    :bank_transaction_id,
+                    NULL,
+                    'TRANSACTION_INVESTIGATED',
+                    'User marked unmatched bank transaction as investigated.'
+                )
+            """, {
+                "bank_transaction_id": bank_transaction_id,
+            })
+
             connection.commit()
             return True
     finally:
@@ -583,30 +660,92 @@ def confirm_bank_transaction_match(bank_transaction_id):
             if cursor.rowcount == 0:
                 return False
 
+            cursor.execute("""
+                SELECT
+                    financial_transaction_id
+                FROM bank_transactions
+                WHERE bank_transaction_id = :bank_transaction_id
+            """, {"bank_transaction_id": bank_transaction_id})
+
+            row = cursor.fetchone()
+
+            financial_transaction_id = row[0]
+
+            cursor.execute("""
+                INSERT INTO audit_log (
+                    bank_transaction_id,
+                    financial_transaction_id,
+                    action,
+                    details
+                )
+                VALUES (
+                    :bank_transaction_id,
+                    :financial_transaction_id,
+                    'RECONCILIATION_CONFIRMED',
+                    'User confirmed possible reconciliation match.'
+                )
+            """, {
+                "bank_transaction_id": bank_transaction_id,
+                "financial_transaction_id": financial_transaction_id,
+            })
+
             connection.commit()
             return True
     finally:
         connection.close()
 
-
-def confirm_bank_transaction_match(bank_transaction_id):
+def log_audit_event(
+    action,
+    bank_transaction_id=None,
+    financial_transaction_id=None,
+    details=None,
+):
     connection = get_connection()
 
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
-                UPDATE bank_transactions
-                SET
-                    status = 'MATCHED'
-                WHERE bank_transaction_id = :bank_transaction_id
-                  AND match_type = 'POSSIBLE_MATCH'
-                  AND financial_transaction_id IS NOT NULL
-            """, {"bank_transaction_id": bank_transaction_id})
-
-            if cursor.rowcount == 0:
-                return False
+                INSERT INTO audit_log (
+                    bank_transaction_id,
+                    financial_transaction_id,
+                    action,
+                    details
+                )
+                VALUES (
+                    :bank_transaction_id,
+                    :financial_transaction_id,
+                    :action,
+                    :details
+                )
+            """, {
+                "bank_transaction_id": bank_transaction_id,
+                "financial_transaction_id": financial_transaction_id,
+                "action": action,
+                "details": details,
+            })
 
             connection.commit()
             return True
+    finally:
+        connection.close()
+
+def get_audit_log():
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    audit_id,
+                    bank_transaction_id,
+                    financial_transaction_id,
+                    action,
+                    details,
+                    created_at
+                FROM audit_log
+                ORDER BY audit_id DESC
+            """)
+
+            return cursor.fetchall()
     finally:
         connection.close()

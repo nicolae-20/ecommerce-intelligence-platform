@@ -46,3 +46,13 @@ class ReconciliationReviewItem(BaseModel):
     system_date: str | None
     system_description: str | None
     system_amount: float | None
+
+
+
+class AuditLogItem(BaseModel):
+    audit_id: int
+    bank_transaction_id: int | None
+    financial_transaction_id: int | None
+    action: str
+    details: str | None
+    created_at: str

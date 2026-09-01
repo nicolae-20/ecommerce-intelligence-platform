@@ -91,6 +91,15 @@ type ReconciliationReviewItem = {
   system_amount: number | null
 }
 
+type AuditLogItem = {
+  audit_id: number
+  bank_transaction_id: number | null
+  financial_transaction_id: number | null
+  action: string
+  details: string | null
+  created_at: string
+}
+
 function App() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyRevenue[]>([])
@@ -110,6 +119,7 @@ function App() {
   useState<Record<number, number | "">>({})
   const [reconciliationReview, setReconciliationReview] =
   useState<ReconciliationReviewItem[]>([])
+  const [auditLog, setAuditLog] = useState<AuditLogItem[]>([])
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -126,8 +136,9 @@ function App() {
       fetch("http://127.0.0.1:8000/bookkeeping/review-queue"),
       fetch("http://127.0.0.1:8000/bookkeeping/categories"),
       fetch(
-  "http://127.0.0.1:8000/bookkeeping/reconciliation-review"
+      "http://127.0.0.1:8000/bookkeeping/reconciliation-review"
 ),
+      fetch("http://127.0.0.1:8000/bookkeeping/audit-log"),
     ])
       .then(async ([
         customersResponse,
@@ -140,6 +151,7 @@ function App() {
         reviewQueueResponse,
         categoriesResponse,
         reconciliationReviewResponse,
+        auditLogResponse,
       ]) => {
         if (
           !customersResponse.ok ||
@@ -151,7 +163,8 @@ function App() {
           !bookkeepingSummaryResponse.ok ||
           !reviewQueueResponse.ok ||
           !categoriesResponse.ok ||
-          !reconciliationReviewResponse.ok
+          !reconciliationReviewResponse.ok ||
+          !auditLogResponse.ok
         ) {
           throw new Error("Failed to load dashboard data")
         }
@@ -167,6 +180,7 @@ function App() {
   reviewQueueData,
   categoriesData,
   reconciliationReviewData,
+  auditLogData,
 ] = await Promise.all([
   customersResponse.json(),
   revenueResponse.json(),
@@ -178,6 +192,7 @@ function App() {
   reviewQueueResponse.json(),
   categoriesResponse.json(),
   reconciliationReviewResponse.json(),
+  auditLogResponse.json(),
 ])
 
         setCustomers(customersData)
@@ -190,6 +205,7 @@ function App() {
         setReviewQueue(reviewQueueData)
         setBookkeepingCategories(categoriesData)
         setReconciliationReview(reconciliationReviewData)
+        setAuditLog(auditLogData)
         setLoading(false)
       })
       .catch((error) => {
@@ -451,6 +467,47 @@ const handleInvestigateReconciliation = async (
   }
 }
 
+const handleRunReconciliation = async () => {
+  try {
+    const response = await fetch(
+      "http://127.0.0.1:8000/bookkeeping/reconciliation/run",
+      {
+        method: "POST",
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error("Failed to run reconciliation")
+    }
+
+    const reviewResponse = await fetch(
+      "http://127.0.0.1:8000/bookkeeping/reconciliation-review"
+    )
+
+    if (!reviewResponse.ok) {
+      throw new Error("Failed to refresh reconciliation review")
+    }
+
+    const reviewData = await reviewResponse.json()
+
+    setReconciliationReview(reviewData)
+
+    const auditResponse = await fetch(
+      "http://127.0.0.1:8000/bookkeeping/audit-log"
+    )
+
+    if (!auditResponse.ok) {
+      throw new Error("Failed to refresh audit log")
+    }
+
+    const auditData = await auditResponse.json()
+
+    setAuditLog(auditData)
+  } catch {
+    setError("Could not run reconciliation")
+  }
+}
+
   return (
     <main className="dashboard">
       <header className="dashboard-header">
@@ -663,6 +720,13 @@ const handleInvestigateReconciliation = async (
 <section className="dashboard-card">
   <h2>Reconciliation Review</h2>
 
+  <button
+  className="run-reconciliation-button"
+  onClick={handleRunReconciliation}
+>
+  Run Reconciliation
+</button>
+
   {reconciliationReview.length === 0 ? (
     <p className="empty-state">
       No reconciliation items require review.
@@ -750,6 +814,51 @@ const handleInvestigateReconciliation = async (
     Investigate
   </button>
 )}
+        </div>
+      </div>
+    ))
+  )}
+</section>
+<section className="dashboard-card">
+  <h2>Audit Log</h2>
+
+  {auditLog.length === 0 ? (
+    <p className="empty-state">
+      No audit events recorded.
+    </p>
+  ) : (
+    auditLog.map((event) => (
+      <div
+        className="review-row"
+        key={event.audit_id}
+      >
+        <div className="review-main">
+          <strong>{event.action}</strong>
+
+          <span>
+            {new Date(event.created_at).toLocaleString()}
+          </span>
+        </div>
+
+        <div className="review-details">
+          {event.bank_transaction_id !== null && (
+            <span>
+              Bank transaction: {event.bank_transaction_id}
+            </span>
+          )}
+
+          {event.financial_transaction_id !== null && (
+            <span>
+              Financial transaction:{" "}
+              {event.financial_transaction_id}
+            </span>
+          )}
+
+          {event.details && (
+            <span>
+              {event.details}
+            </span>
+          )}
         </div>
       </div>
     ))

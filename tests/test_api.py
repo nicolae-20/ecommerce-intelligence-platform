@@ -550,3 +550,158 @@ def test_investigate_reconciliation():
             connection.commit()
     finally:
         connection.close()
+
+
+def test_audit_log():
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                DELETE FROM audit_log
+                WHERE action = 'TEST_API_AUDIT'
+            """)
+
+            cursor.execute("""
+                INSERT INTO audit_log (
+                    financial_transaction_id,
+                    action,
+                    details
+                )
+                VALUES (
+                    1,
+                    'TEST_API_AUDIT',
+                    'Test API audit event.'
+                )
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+    response = client.get("/bookkeeping/audit-log")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert len(data) >= 1
+
+    test_events = [
+        item
+        for item in data
+        if item["action"] == "TEST_API_AUDIT"
+    ]
+
+    assert len(test_events) == 1
+
+    event = test_events[0]
+
+    assert event["financial_transaction_id"] == 1
+    assert event["bank_transaction_id"] is None
+    assert event["action"] == "TEST_API_AUDIT"
+    assert event["details"] == "Test API audit event."
+    assert event["created_at"] is not None
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                DELETE FROM audit_log
+                WHERE action = 'TEST_API_AUDIT'
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+def test_run_reconciliation():
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL,
+                    match_type = NULL,
+                    match_confidence = NULL,
+                    investigation_status = NULL
+                WHERE bank_transaction_id IN (1, 2, 3, 4)
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+    response = client.post(
+        "/bookkeeping/reconciliation/run"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["success"] is True
+    assert data["message"] == (
+        "Reconciliation completed successfully."
+    )
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    bank_transaction_id,
+                    status,
+                    financial_transaction_id,
+                    match_type,
+                    match_confidence
+                FROM bank_transactions
+                WHERE bank_transaction_id IN (1, 2, 3, 4)
+                ORDER BY bank_transaction_id
+            """)
+
+            rows = cursor.fetchall()
+
+            assert rows[0][1] == "MATCHED"
+            assert rows[0][2] == 3
+            assert rows[0][3] == "EXACT_MATCH"
+            assert rows[0][4] == 1
+
+            assert rows[1][1] == "MATCHED"
+            assert rows[1][2] == 1
+            assert rows[1][3] == "EXACT_MATCH"
+            assert rows[1][4] == 1
+
+            assert rows[2][1] == "UNMATCHED"
+            assert rows[2][2] is None
+            assert rows[2][3] == "NO_MATCH"
+            assert rows[2][4] == 0
+
+            assert rows[3][1] == "UNMATCHED"
+            assert rows[3][2] == 5
+            assert rows[3][3] == "POSSIBLE_MATCH"
+            assert rows[3][4] == 0.9
+
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL,
+                    match_type = NULL,
+                    match_confidence = NULL,
+                    investigation_status = NULL
+                WHERE bank_transaction_id IN (1, 2, 3, 4)
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()

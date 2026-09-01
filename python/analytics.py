@@ -1,5 +1,8 @@
 from database import get_connection
-
+from llm_categorizer import (
+    is_high_confidence_suggestion,
+    suggest_transaction_category,
+)
 
 def get_top_customers(limit=5):
     connection = get_connection()
@@ -320,7 +323,12 @@ def get_transactions_requiring_review():
                     ai_suggested_category,
                     ai_confidence,
                     reconciliation_status,
-                    status
+                    status,
+                    CASE
+    WHEN ai_suggested_category IS NULL THEN 'NO_SUGGESTION'
+    WHEN ai_confidence >= 0.80 THEN 'HIGH_CONFIDENCE'
+    ELSE 'NEEDS_REVIEW'
+END AS ai_review_status
                 FROM financial_transactions
                 WHERE
     category IS NULL
@@ -332,6 +340,39 @@ def get_transactions_requiring_review():
     finally:
         connection.close()
 
+def get_ai_categorization_review_queue():
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    transaction_id,
+                    transaction_date,
+                    transaction_type,
+                    description,
+                    amount,
+                    category,
+                    vendor,
+                    ai_suggested_category,
+                    ai_confidence,
+                    reconciliation_status,
+                    status,
+                    CASE
+                        WHEN ai_suggested_category IS NULL
+                            THEN 'NO_SUGGESTION'
+                        WHEN ai_confidence >= 0.80
+                            THEN 'HIGH_CONFIDENCE'
+                        ELSE 'NEEDS_REVIEW'
+                    END AS ai_review_status
+                FROM financial_transactions
+                WHERE category IS NULL
+                ORDER BY transaction_date
+            """)
+
+            return cursor.fetchall()
+    finally:
+        connection.close()
 
 def approve_transaction_category(transaction_id):
     connection = get_connection()
@@ -749,3 +790,101 @@ def get_audit_log():
             return cursor.fetchall()
     finally:
         connection.close()
+
+def categorize_transaction_with_llm(transaction_id, client=None):
+    from llm_categorizer import suggest_transaction_category
+    from accounting_rag import get_accounting_context
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    description,
+                    vendor,
+                    amount
+                FROM financial_transactions
+                WHERE transaction_id = :transaction_id
+            """, {"transaction_id": transaction_id})
+
+            row = cursor.fetchone()
+
+            if row is None:
+                return False
+
+            description, vendor, amount = row
+
+            context = get_accounting_context(
+    description=description,
+    vendor=vendor,
+)
+
+            suggestion = suggest_transaction_category(
+    description=description,
+    vendor=vendor,
+    amount=float(amount),
+    client=client,
+    context=context,
+)
+
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET
+                    ai_suggested_category = :category,
+                    ai_confidence = :confidence
+                WHERE transaction_id = :transaction_id
+            """, {
+                "category": suggestion.category,
+                "confidence": suggestion.confidence,
+                "transaction_id": transaction_id,
+            })
+
+            connection.commit()
+
+            return suggestion
+    finally:
+        connection.close()
+
+
+def categorize_uncategorized_transactions(client=None):
+    from llm_categorizer import is_high_confidence_suggestion
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    transaction_id
+                FROM financial_transactions
+                WHERE
+                    category IS NULL
+                    AND ai_suggested_category IS NULL
+                ORDER BY transaction_id
+            """)
+
+            transaction_ids = [
+                row[0]
+                for row in cursor.fetchall()
+            ]
+    finally:
+        connection.close()
+
+    results = []
+
+    for transaction_id in transaction_ids:
+        suggestion = categorize_transaction_with_llm(
+            transaction_id=transaction_id,
+            client=client,
+        )
+
+        if suggestion:
+            results.append({
+        "transaction_id": transaction_id,
+        "category": suggestion.category,
+        "confidence": suggestion.confidence,
+        "high_confidence": suggestion.high_confidence,
+    })
+
+    return results

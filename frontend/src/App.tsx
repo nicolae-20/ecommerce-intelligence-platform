@@ -60,7 +60,7 @@ type ReviewTransaction = {
   transaction_id: number
   transaction_date: string
   transaction_type: string
-  description: string | null
+  description: string
   amount: number
   category: string | null
   vendor: string | null
@@ -68,6 +68,7 @@ type ReviewTransaction = {
   ai_confidence: number | null
   reconciliation_status: string
   status: string
+  ai_review_status: string
 }
 
 type BookkeepingCategory = {
@@ -113,6 +114,8 @@ function App() {
   useState<BookkeepingSummary | null>(null)
   const [reviewQueue, setReviewQueue] =
   useState<ReviewTransaction[]>([])
+  const [aiReviewQueue, setAiReviewQueue] =
+  useState<ReviewTransaction[]>([])
   const [bookkeepingCategories, setBookkeepingCategories] =
   useState<BookkeepingCategory[]>([])
   const [selectedCategories, setSelectedCategories] =
@@ -123,6 +126,9 @@ function App() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [assistantQuestion, setAssistantQuestion] = useState("")
+const [assistantResponse, setAssistantResponse] = useState("")
+const [assistantLoading, setAssistantLoading] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -134,80 +140,87 @@ function App() {
       fetch("http://127.0.0.1:8000/analytics/accounting-insights"),
       fetch("http://127.0.0.1:8000/bookkeeping/summary"),
       fetch("http://127.0.0.1:8000/bookkeeping/review-queue"),
+      fetch("http://127.0.0.1:8000/bookkeeping/ai-review-queue"),
       fetch("http://127.0.0.1:8000/bookkeeping/categories"),
       fetch(
       "http://127.0.0.1:8000/bookkeeping/reconciliation-review"
 ),
       fetch("http://127.0.0.1:8000/bookkeeping/audit-log"),
+      
     ])
       .then(async ([
-        customersResponse,
-        revenueResponse,
-        profitResponse,
-        overviewResponse,
-        financialSummaryResponse,
-        accountingInsightsResponse,
-        bookkeepingSummaryResponse,
-        reviewQueueResponse,
-        categoriesResponse,
-        reconciliationReviewResponse,
-        auditLogResponse,
-      ]) => {
-        if (
-          !customersResponse.ok ||
-          !revenueResponse.ok ||
-          !profitResponse.ok ||
-          !overviewResponse.ok ||
-          !financialSummaryResponse.ok ||
-          !accountingInsightsResponse.ok ||
-          !bookkeepingSummaryResponse.ok ||
-          !reviewQueueResponse.ok ||
-          !categoriesResponse.ok ||
-          !reconciliationReviewResponse.ok ||
-          !auditLogResponse.ok
-        ) {
-          throw new Error("Failed to load dashboard data")
-        }
+  customersResponse,
+  revenueResponse,
+  profitResponse,
+  overviewResponse,
+  financialSummaryResponse,
+  accountingInsightsResponse,
+  bookkeepingSummaryResponse,
+  reviewQueueResponse,
+  aiReviewQueueResponse,
+  categoriesResponse,
+  reconciliationReviewResponse,
+  auditLogResponse,
+]) => {
+  if (
+    !customersResponse.ok ||
+    !revenueResponse.ok ||
+    !profitResponse.ok ||
+    !overviewResponse.ok ||
+    !financialSummaryResponse.ok ||
+    !accountingInsightsResponse.ok ||
+    !bookkeepingSummaryResponse.ok ||
+    !reviewQueueResponse.ok ||
+    !aiReviewQueueResponse.ok ||
+    !categoriesResponse.ok ||
+    !reconciliationReviewResponse.ok ||
+    !auditLogResponse.ok
+  ) {
+    throw new Error("Failed to load dashboard data")
+  }
 
-        const [
-  customersData,
-  revenueData,
-  profitData,
-  overviewData,
-  financialSummaryData,
-  accountingInsightsData,
-  bookkeepingSummaryData,
-  reviewQueueData,
-  categoriesData,
-  reconciliationReviewData,
-  auditLogData,
-] = await Promise.all([
-  customersResponse.json(),
-  revenueResponse.json(),
-  profitResponse.json(),
-  overviewResponse.json(),
-  financialSummaryResponse.json(),
-  accountingInsightsResponse.json(),
-  bookkeepingSummaryResponse.json(),
-  reviewQueueResponse.json(),
-  categoriesResponse.json(),
-  reconciliationReviewResponse.json(),
-  auditLogResponse.json(),
-])
+  const [
+    customersData,
+    revenueData,
+    profitData,
+    overviewData,
+    financialSummaryData,
+    accountingInsightsData,
+    bookkeepingSummaryData,
+    reviewQueueData,
+    aiReviewQueueData,
+    categoriesData,
+    reconciliationReviewData,
+    auditLogData,
+  ] = await Promise.all([
+    customersResponse.json(),
+    revenueResponse.json(),
+    profitResponse.json(),
+    overviewResponse.json(),
+    financialSummaryResponse.json(),
+    accountingInsightsResponse.json(),
+    bookkeepingSummaryResponse.json(),
+    reviewQueueResponse.json(),
+    aiReviewQueueResponse.json(),
+    categoriesResponse.json(),
+    reconciliationReviewResponse.json(),
+    auditLogResponse.json(),
+  ])
 
-        setCustomers(customersData)
-        setMonthlyRevenue(revenueData)
-        setCategoryProfit(profitData)
-        setOverview(overviewData)
-        setFinancialSummary(financialSummaryData)
-        setAccountingInsights(accountingInsightsData)
-        setBookkeepingSummary(bookkeepingSummaryData)
-        setReviewQueue(reviewQueueData)
-        setBookkeepingCategories(categoriesData)
-        setReconciliationReview(reconciliationReviewData)
-        setAuditLog(auditLogData)
-        setLoading(false)
-      })
+  setCustomers(customersData)
+  setMonthlyRevenue(revenueData)
+  setCategoryProfit(profitData)
+  setOverview(overviewData)
+  setFinancialSummary(financialSummaryData)
+  setAccountingInsights(accountingInsightsData)
+  setBookkeepingSummary(bookkeepingSummaryData)
+  setReviewQueue(reviewQueueData)
+  setAiReviewQueue(aiReviewQueueData)
+  setBookkeepingCategories(categoriesData)
+  setReconciliationReview(reconciliationReviewData)
+  setAuditLog(auditLogData)
+  setLoading(false)
+})
       .catch((error) => {
   console.error("Dashboard load error:", error)
   setError(
@@ -368,8 +381,8 @@ const handleCancel = async (transactionId: number) => {
     }
 
     const reviewResponse = await fetch(
-      "http://127.0.0.1:8000/bookkeeping/review-queue"
-    )
+  "http://127.0.0.1:8000/bookkeeping/ai-review-queue"
+)
 
     if (!reviewResponse.ok) {
       throw new Error("Failed to refresh review queue")
@@ -489,7 +502,16 @@ const handleRunReconciliation = async () => {
     }
 
     const reviewData = await reviewResponse.json()
+    console.log("REFRESHED REVIEW QUEUE:", reviewData)
+    console.log(
+  "REVIEW QUEUE COUNT:",
+  reviewData.length
+)
 
+console.log(
+  "REVIEW QUEUE DATA:",
+  reviewData
+)
     setReconciliationReview(reviewData)
 
     const auditResponse = await fetch(
@@ -507,6 +529,114 @@ const handleRunReconciliation = async () => {
     setError("Could not run reconciliation")
   }
 }
+
+const handleAICategorize = async () => {
+  console.log("AI CATEGORIZE BUTTON CLICKED")
+
+  try {
+    const response = await fetch(
+      "http://127.0.0.1:8000/bookkeeping/ai-categorize",
+      {
+        method: "POST",
+      }
+    )
+
+    console.log("AI CATEGORIZE RESPONSE:", response.status)
+
+    if (!response.ok) {
+      throw new Error("Failed to run AI categorization")
+    }
+
+    const reviewResponse = await fetch(
+      "http://127.0.0.1:8000/bookkeeping/review-queue"
+    )
+
+    console.log(
+      "REVIEW QUEUE RESPONSE:",
+      reviewResponse.status
+    )
+
+    if (!reviewResponse.ok) {
+      throw new Error("Failed to refresh review queue")
+    }
+
+    const reviewData = await reviewResponse.json()
+    
+    setAiReviewQueue(reviewData)
+
+    console.log("REFRESHED REVIEW QUEUE:", reviewData)
+
+    
+
+    const auditResponse = await fetch(
+      "http://127.0.0.1:8000/bookkeeping/audit-log"
+    )
+
+    console.log(
+      "AUDIT RESPONSE:",
+      auditResponse.status
+    )
+
+    if (!auditResponse.ok) {
+      throw new Error("Failed to refresh audit log")
+    }
+
+    const auditData = await auditResponse.json()
+
+    setAuditLog(auditData)
+  } catch (error) {
+    console.error("AI categorization error:", error)
+
+    setError(
+      error instanceof Error
+        ? error.message
+        : "Could not run AI categorization"
+    )
+  }
+}
+
+const handleAskAssistant = async () => {
+  if (!assistantQuestion.trim()) {
+    return
+  }
+
+  setAssistantLoading(true)
+  setAssistantResponse("")
+
+  try {
+    const response = await fetch(
+      "http://127.0.0.1:8000/bookkeeping/ai-assistant",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          question: assistantQuestion,
+        }),
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error("Failed to contact AI Assistant")
+    }
+
+    const data = await response.json()
+
+    setAssistantResponse(data.message)
+  } catch (error) {
+    console.error("AI Assistant error:", error)
+
+    setAssistantResponse(
+      error instanceof Error
+        ? error.message
+        : "Could not contact AI Assistant"
+    )
+  } finally {
+    setAssistantLoading(false)
+  }
+}
+
 
   return (
     <main className="dashboard">
@@ -607,9 +737,53 @@ const handleRunReconciliation = async () => {
   </div>
 </section>
 <section className="dashboard-card">
-  <h2>Transactions Requiring Review</h2>
+  <h2>AI Assistant</h2>
 
-  {reviewQueue.map((transaction) => (
+  <div className="assistant-input-row">
+    <input
+      type="text"
+      value={assistantQuestion}
+      onChange={(event) =>
+        setAssistantQuestion(event.target.value)
+      }
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          handleAskAssistant()
+        }
+      }}
+      placeholder="Ask about bookkeeping, AI review, reconciliation, or audit activity..."
+    />
+
+    <button
+      className="assistant-button"
+      onClick={handleAskAssistant}
+      disabled={
+        assistantLoading || !assistantQuestion.trim()
+      }
+    >
+      {assistantLoading ? "Asking..." : "Ask Assistant"}
+    </button>
+  </div>
+
+  {assistantResponse && (
+    <div className="assistant-response">
+      <strong>Assistant</strong>
+      <p>{assistantResponse}</p>
+    </div>
+  )}
+</section>
+<section className="dashboard-card">
+  <h2>AI Categorization Review</h2>
+
+
+  <button
+  className="ai-categorize-button"
+  onClick={handleAICategorize}
+>
+  AI Categorize Transactions
+</button>
+
+  {aiReviewQueue.map((transaction) => (
     <div className="review-row" key={transaction.transaction_id}>
       <div className="review-main">
         <strong>{transaction.description}</strong>
@@ -636,6 +810,9 @@ const handleRunReconciliation = async () => {
             ? `${(transaction.ai_confidence * 100).toFixed(0)}%`
             : "N/A"}
         </span>
+        <span>
+  AI Review: {transaction.ai_review_status}
+</span>
 
         <span>
           {transaction.reconciliation_status}

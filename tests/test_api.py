@@ -101,6 +101,14 @@ def test_review_queue():
 
     assert len(data) == 3
 
+    transaction = next(
+    item
+    for item in data
+    if item["transaction_id"] == 1
+)
+
+    assert transaction["ai_review_status"] == "HIGH_CONFIDENCE"
+
     assert data[0]["transaction_id"] == 1
     assert data[0]["ai_suggested_category"] == "Software"
     assert data[0]["ai_confidence"] == 0.97
@@ -705,3 +713,94 @@ def test_run_reconciliation():
             connection.commit()
     finally:
         connection.close()
+
+
+def test_ai_categorize_transactions(monkeypatch):
+    from api.routers import bookkeeping
+
+    mock_results = [
+        {
+            "transaction_id": 2,
+            "category": "Office Supplies",
+            "confidence": 0.88,
+        },
+        {
+            "transaction_id": 3,
+            "category": "Office Supplies",
+            "confidence": 0.88,
+        },
+    ]
+
+    def mock_categorize_uncategorized_transactions():
+        return mock_results
+
+    monkeypatch.setattr(
+        bookkeeping,
+        "categorize_uncategorized_transactions",
+        mock_categorize_uncategorized_transactions,
+    )
+
+    response = client.post(
+        "/bookkeeping/ai-categorize"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["success"] is True
+    assert data["message"] == (
+        "AI categorization completed successfully."
+    )
+    assert data["count"] == 2
+    assert data["results"] == mock_results
+
+
+
+def test_ai_review_queue():
+    response = client.get("/bookkeeping/ai-review-queue")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    for item in data:
+        assert item["category"] is None
+        assert "ai_suggested_category" in item
+        assert "ai_confidence" in item
+        assert "ai_review_status" in item
+
+
+def test_ai_assistant():
+    response = client.post(
+        "/bookkeeping/ai-assistant",
+        json={
+            "question": "What's our bookkeeping summary?"
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["success"] is True
+    assert data["tool_name"] == "get_bookkeeping_summary"
+    assert "bookkeeping summary" in data["message"].lower()
+    assert data["tool_result"] is not None
+
+
+def test_ai_assistant_ai_review():
+    response = client.post(
+        "/bookkeeping/ai-assistant",
+        json={
+            "question": "Which transactions need AI review?"
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["success"] is True
+    assert data["tool_name"] == "get_ai_review_queue"
+    assert data["tool_result"] is not None

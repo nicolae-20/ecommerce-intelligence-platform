@@ -2,6 +2,7 @@ from pathlib import Path
 import sys
 
 from fastapi import APIRouter
+from ai_assistant import ask_assistant
 
 sys.path.append(str(Path(__file__).resolve().parents[2] / "python"))
 
@@ -19,6 +20,8 @@ from analytics import (
     investigate_bank_transaction,
     get_audit_log,
     run_reconciliation,
+    categorize_uncategorized_transactions,
+    get_ai_categorization_review_queue,
 )
 
 from api.schemas.bookkeeping import (
@@ -28,6 +31,7 @@ from api.schemas.bookkeeping import (
     TransactionActionResponse,
     ReconciliationReviewItem,
     AuditLogItem,
+    AIAssistantRequest,
 )
 
 
@@ -56,21 +60,22 @@ def review_queue():
     rows = get_transactions_requiring_review()
 
     return [
-        ReviewTransaction(
-            transaction_id=row[0],
-            transaction_date=row[1].isoformat(),
-            transaction_type=row[2],
-            description=row[3],
-            amount=float(row[4]),
-            category=row[5],
-            vendor=row[6],
-            ai_suggested_category=row[7],
-            ai_confidence=float(row[8]) if row[8] is not None else None,
-            reconciliation_status=row[9],
-            status=row[10],
-        )
-        for row in rows
-    ]
+    ReviewTransaction(
+        transaction_id=row[0],
+        transaction_date=row[1].isoformat(),
+        transaction_type=row[2],
+        description=row[3],
+        amount=row[4],
+        category=row[5],
+        vendor=row[6],
+        ai_suggested_category=row[7],
+        ai_confidence=row[8],
+        reconciliation_status=row[9],
+        status=row[10],
+        ai_review_status=row[11],
+    )
+    for row in rows
+]
 
 
 @router.post(
@@ -141,7 +146,7 @@ def assign_category(transaction_id: int, category_id: int):
     if not success:
         return TransactionActionResponse(
             success=False,
-            message="Transaction category could not be assigned.",
+            message="Category assignment failed.",
         )
 
     return TransactionActionResponse(
@@ -286,3 +291,62 @@ def run_reconciliation_endpoint():
         success=True,
         message="Reconciliation completed successfully.",
     )
+
+
+@router.post(
+    "/ai-categorize",
+)
+def ai_categorize_transactions():
+    results = categorize_uncategorized_transactions()
+
+    if not results:
+        return {
+            "success": True,
+            "message": "No uncategorized transactions require AI categorization.",
+            "count": 0,
+            "results": [],
+        }
+
+    return {
+        "success": True,
+        "message": "AI categorization completed successfully.",
+        "count": len(results),
+        "results": results,
+    }
+
+@router.get(
+    "/ai-review-queue",
+    response_model=list[ReviewTransaction],
+)
+def ai_review_queue():
+    rows = get_ai_categorization_review_queue()
+
+    return [
+        ReviewTransaction(
+            transaction_id=row[0],
+            transaction_date=row[1].isoformat(),
+            transaction_type=row[2],
+            description=row[3],
+            amount=row[4],
+            category=row[5],
+            vendor=row[6],
+            ai_suggested_category=row[7],
+            ai_confidence=row[8],
+            reconciliation_status=row[9],
+            status=row[10],
+            ai_review_status=row[11],
+        )
+        for row in rows
+    ]
+
+
+@router.post("/ai-assistant")
+def ai_assistant(request: AIAssistantRequest):
+    response = ask_assistant(request.question)
+
+    return {
+        "success": True,
+        "message": response.message,
+        "tool_name": response.tool_name,
+        "tool_result": response.tool_result,
+    }

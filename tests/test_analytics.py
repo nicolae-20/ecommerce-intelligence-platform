@@ -1,5 +1,11 @@
 import sys
 from pathlib import Path
+from llm_categorizer import suggest_transaction_category
+from llm_categorizer import (
+    AI_CONFIDENCE_THRESHOLD,
+    CategorySuggestion,
+    is_high_confidence_suggestion,
+)
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "python"))
 
@@ -23,6 +29,8 @@ from analytics import (
     investigate_bank_transaction,
     log_audit_event,
     get_audit_log,
+    categorize_transaction_with_llm,
+    categorize_uncategorized_transactions,
 )
 
 def test_top_customers():
@@ -911,3 +919,681 @@ def test_get_audit_log():
             connection.commit()
     finally:
         connection.close()
+
+
+class MockResponse:
+    output_text = '{"category": "Software", "confidence": 0.97}'
+
+
+class MockResponses:
+    def create(self, **kwargs):
+        return MockResponse()
+
+
+class MockClient:
+    def __init__(self):
+        self.responses = MockResponses()
+
+
+def test_suggest_transaction_category():
+    suggestion = suggest_transaction_category(
+        description="AWS monthly service",
+        vendor="Amazon Web Services",
+        amount=-129,
+        client=MockClient(),
+    )
+
+    assert suggestion.category == "Software"
+    assert suggestion.confidence == 0.97
+    assert suggestion.high_confidence is True
+
+def test_categorize_transaction_with_llm():
+    from database import get_connection
+
+    class MockResponse:
+        output_text = '{"category": "Software", "confidence": 0.92}'
+
+    class MockResponses:
+        def create(self, **kwargs):
+            return MockResponse()
+
+    class MockClient:
+        def __init__(self):
+            self.responses = MockResponses()
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    ai_suggested_category,
+                    ai_confidence
+                FROM financial_transactions
+                WHERE transaction_id = 2
+            """)
+
+            original_row = cursor.fetchone()
+
+            original_category = original_row[0]
+            original_confidence = original_row[1]
+    finally:
+        connection.close()
+
+    result = categorize_transaction_with_llm(
+        transaction_id=2,
+        client=MockClient(),
+    )
+
+    assert result.category == "Software"
+    assert result.confidence == 0.92
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    ai_suggested_category,
+                    ai_confidence
+                FROM financial_transactions
+                WHERE transaction_id = 2
+            """)
+
+            row = cursor.fetchone()
+
+            assert row[0] == "Software"
+            assert row[1] == 0.92
+
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET
+                    ai_suggested_category = :category,
+                    ai_confidence = :confidence
+                WHERE transaction_id = 2
+            """, {
+                "category": original_category,
+                "confidence": original_confidence,
+            })
+
+            connection.commit()
+    finally:
+        connection.close()
+
+def test_categorize_uncategorized_transactions():
+    from database import get_connection
+
+    class MockResponse:
+        output_text = '{"category": "Office Supplies", "confidence": 0.88}'
+
+    class MockResponses:
+        def create(self, **kwargs):
+            return MockResponse()
+
+    class MockClient:
+        def __init__(self):
+            self.responses = MockResponses()
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    transaction_id,
+                    category,
+                    ai_suggested_category,
+                    ai_confidence
+                FROM financial_transactions
+                WHERE transaction_id IN (2, 3)
+                ORDER BY transaction_id
+            """)
+
+            original_rows = cursor.fetchall()
+
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET
+                    category = NULL,
+                    ai_suggested_category = NULL,
+                    ai_confidence = NULL
+                WHERE transaction_id IN (2, 3)
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+    results = categorize_uncategorized_transactions(
+        client=MockClient(),
+    )
+
+    transaction_ids = {
+        item["transaction_id"]
+        for item in results
+    }
+
+    assert 2 in transaction_ids
+    assert 3 in transaction_ids
+
+    for item in results:
+        assert item["category"] == "Office Supplies"
+        assert item["confidence"] == 0.88
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            for transaction_id, category, ai_category, ai_confidence in original_rows:
+                cursor.execute("""
+                    UPDATE financial_transactions
+                    SET
+                        category = :category,
+                        ai_suggested_category = :ai_category,
+                        ai_confidence = :ai_confidence
+                    WHERE transaction_id = :transaction_id
+                """, {
+                    "category": category,
+                    "ai_category": ai_category,
+                    "ai_confidence": ai_confidence,
+                    "transaction_id": transaction_id,
+                })
+
+            connection.commit()
+    finally:
+        connection.close()
+
+
+def test_categorize_uncategorized_transactions_skips_categorized_transaction():
+    from database import get_connection
+
+    class MockResponse:
+        output_text = '{"category": "Advertising", "confidence": 0.91}'
+
+    class MockResponses:
+        def create(self, **kwargs):
+            raise AssertionError(
+                "Categorized transaction should not be sent to the AI."
+            )
+
+    class MockClient:
+        def __init__(self):
+            self.responses = MockResponses()
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    category,
+                    ai_suggested_category,
+                    ai_confidence
+                FROM financial_transactions
+                WHERE transaction_id = 3
+            """)
+
+            original_row = cursor.fetchone()
+    finally:
+        connection.close()
+
+    result = categorize_uncategorized_transactions(
+        client=MockClient(),
+    )
+
+    transaction_ids = {
+        item["transaction_id"]
+        for item in result
+    }
+
+    assert 3 not in transaction_ids
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    category,
+                    ai_suggested_category,
+                    ai_confidence
+                FROM financial_transactions
+                WHERE transaction_id = 3
+            """)
+
+            row = cursor.fetchone()
+
+            assert row[0] == original_row[0]
+            assert row[1] == original_row[1]
+            assert row[2] == original_row[2]
+    finally:
+        connection.close()
+
+
+def test_is_high_confidence_suggestion():
+    high_confidence = CategorySuggestion(
+        category="Software",
+        confidence=0.80,
+    )
+
+    low_confidence = CategorySuggestion(
+        category="Uncategorized",
+        confidence=0.79,
+    )
+
+    assert AI_CONFIDENCE_THRESHOLD == 0.80
+    assert is_high_confidence_suggestion(high_confidence) is True
+    assert is_high_confidence_suggestion(low_confidence) is False
+
+
+def test_category_suggestion_confidence_status():
+    high = CategorySuggestion(
+        category="Software",
+        confidence=0.80,
+    )
+
+    low = CategorySuggestion(
+        category="Uncategorized",
+        confidence=0.00,
+    )
+
+    assert high.high_confidence is True
+    assert low.high_confidence is False
+
+
+def test_get_accounting_context():
+    from accounting_rag import get_accounting_context
+
+    context = get_accounting_context(
+        description="Microsoft 365 subscription",
+        vendor="Microsoft",
+    )
+
+    assert len(context.categories) > 0
+
+    category_names = {
+        category["account_name"]
+        for category in context.categories
+    }
+
+    assert "Software" in category_names
+
+    for example in context.examples:
+        assert example["category"] is not None
+
+
+def test_suggest_transaction_category_includes_rag_context():
+    from accounting_rag import AccountingContext
+    from llm_categorizer import suggest_transaction_category
+
+    captured = {}
+
+    class MockResponse:
+        output_text = '{"category": "Office Supplies", "confidence": 0.88}'
+
+    class MockResponses:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return MockResponse()
+
+    class MockClient:
+        def __init__(self):
+            self.responses = MockResponses()
+
+    context = AccountingContext(
+        categories=[
+            {
+                "category_id": 4,
+                "account_code": "6200",
+                "account_name": "Office Supplies",
+                "account_type": "EXPENSE",
+            }
+        ],
+        examples=[
+            {
+                "transaction_id": 2,
+                "description": "Office supplies",
+                "vendor": "Office Depot",
+                "category": "Office Supplies",
+            }
+        ],
+    )
+
+    suggestion = suggest_transaction_category(
+        description="Printer paper",
+        vendor="Office Depot",
+        amount=-25,
+        client=MockClient(),
+        context=context,
+    )
+
+    assert suggestion.category == "Office Supplies"
+    assert suggestion.confidence == 0.88
+
+    messages = captured["input"]
+
+    system_message = messages[0]["content"]
+    user_message = messages[1]["content"]
+
+    assert "6200 Office Supplies (EXPENSE)" in user_message
+    assert "Office supplies (Office Depot) -> Office Supplies" in user_message
+    assert "Office Depot" in user_message
+    assert system_message is not None
+
+
+def test_validate_category_suggestion_accepts_valid_category():
+    from accounting_rag import AccountingContext
+    from llm_categorizer import (
+        CategorySuggestion,
+        validate_category_suggestion,
+    )
+
+    context = AccountingContext(
+        categories=[
+            {
+                "category_id": 3,
+                "account_code": "6100",
+                "account_name": "Software",
+                "account_type": "EXPENSE",
+            },
+            {
+                "category_id": 4,
+                "account_code": "6200",
+                "account_name": "Office Supplies",
+                "account_type": "EXPENSE",
+            },
+        ],
+        examples=[],
+    )
+
+    suggestion = CategorySuggestion(
+        category="Software",
+        confidence=0.95,
+    )
+
+    result = validate_category_suggestion(
+        suggestion,
+        context,
+    )
+
+    assert result.category == "Software"
+    assert result.confidence == 0.95
+
+
+def test_validate_category_suggestion_rejects_invalid_category():
+    import pytest
+
+    from accounting_rag import AccountingContext
+    from llm_categorizer import (
+        CategorySuggestion,
+        validate_category_suggestion,
+    )
+
+    context = AccountingContext(
+        categories=[
+            {
+                "category_id": 3,
+                "account_code": "6100",
+                "account_name": "Software",
+                "account_type": "EXPENSE",
+            }
+        ],
+        examples=[],
+    )
+
+    suggestion = CategorySuggestion(
+        category="Marketing",
+        confidence=0.99,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Invalid accounting category returned by AI",
+    ):
+        validate_category_suggestion(
+            suggestion,
+            context,
+        )
+
+
+def test_low_confidence_suggestion_requires_review():
+    from llm_categorizer import CategorySuggestion
+
+    suggestion = CategorySuggestion(
+        category="Software",
+        confidence=0.10,
+    )
+
+    assert suggestion.high_confidence is False
+
+
+def test_validate_category_suggestion_rejects_uncategorized():
+    from accounting_rag import AccountingContext
+    from llm_categorizer import (
+        CategorySuggestion,
+        validate_category_suggestion,
+    )
+
+    context = AccountingContext(
+        categories=[
+            {
+                "category_id": 3,
+                "account_code": "6100",
+                "account_name": "Software",
+                "account_type": "EXPENSE",
+            },
+            {
+                "category_id": 4,
+                "account_code": "6200",
+                "account_name": "Office Supplies",
+                "account_type": "EXPENSE",
+            },
+        ],
+        examples=[],
+    )
+
+    suggestion = CategorySuggestion(
+        category="Uncategorized",
+        confidence=0.99,
+    )
+
+    import pytest
+
+    with pytest.raises(
+        ValueError,
+        match="Invalid accounting category returned by AI",
+    ):
+        validate_category_suggestion(
+            suggestion,
+            context,
+        )
+
+
+def test_ai_tool_registry():
+    from ai_tools import TOOL_REGISTRY
+
+    assert "get_bookkeeping_summary" in TOOL_REGISTRY
+    assert "get_ai_review_queue" in TOOL_REGISTRY
+    assert "get_reconciliation_review" in TOOL_REGISTRY
+    assert "get_audit_log" in TOOL_REGISTRY
+
+    assert callable(TOOL_REGISTRY["get_bookkeeping_summary"])
+    assert callable(TOOL_REGISTRY["get_ai_review_queue"])
+    assert callable(TOOL_REGISTRY["get_reconciliation_review"])
+    assert callable(TOOL_REGISTRY["get_audit_log"])
+
+
+def test_ai_tool_definitions():
+    from ai_tools import TOOL_DEFINITIONS
+
+    names = {
+        tool["name"]
+        for tool in TOOL_DEFINITIONS
+    }
+
+    assert names == {
+        "get_bookkeeping_summary",
+        "get_ai_review_queue",
+        "get_reconciliation_review",
+        "get_audit_log",
+    }
+
+    for tool in TOOL_DEFINITIONS:
+        assert tool["type"] == "function"
+        assert tool["description"]
+        assert tool["parameters"]["type"] == "object"
+        assert tool["parameters"]["additionalProperties"] is False
+
+
+def test_ai_assistant_selects_bookkeeping_summary():
+    from ai_assistant import ask_assistant
+
+    response = ask_assistant(
+        "What's our bookkeeping summary?"
+    )
+
+    assert response.tool_name == "get_bookkeeping_summary"
+    assert response.tool_result is not None
+
+
+def test_ai_assistant_selects_ai_review_queue():
+    from ai_assistant import ask_assistant
+
+    response = ask_assistant(
+        "Which transactions need AI review?"
+    )
+
+    assert response.tool_name == "get_ai_review_queue"
+    assert response.tool_result is not None
+
+
+def test_ai_assistant_selects_reconciliation_review():
+    from ai_assistant import ask_assistant
+
+    response = ask_assistant(
+        "Are there any unmatched reconciliation issues?"
+    )
+
+    assert response.tool_name == "get_reconciliation_review"
+    assert response.tool_result is not None
+
+
+def test_ai_assistant_selects_audit_log():
+    from ai_assistant import ask_assistant
+
+    response = ask_assistant(
+        "Show me recent audit activity."
+    )
+
+    assert response.tool_name == "get_audit_log"
+    assert response.tool_result is not None
+
+
+def test_ai_assistant_handles_unknown_question():
+    from ai_assistant import ask_assistant
+
+    response = ask_assistant(
+        "What's the weather today?"
+    )
+
+    assert response.tool_name is None
+    assert response.tool_result is None
+
+
+def test_ai_assistant_formats_bookkeeping_summary():
+    from ai_assistant import _format_bookkeeping_summary
+
+    result = (
+        950.0,
+        228.5,
+        721.5,
+        3,
+    )
+
+    message = _format_bookkeeping_summary(result)
+
+    assert "revenue €950.00" in message
+    assert "expenses €228.50" in message
+    assert "net movement €721.50" in message
+    assert "3 transactions requiring review" in message
+
+
+def test_ai_assistant_formats_ai_review_queue():
+    from ai_assistant import _format_ai_review_queue
+
+    result = [
+        (
+            1,
+            "2026-08-01",
+            "EXPENSE",
+            "Amazon Web Services",
+            -129.0,
+            None,
+            "Amazon Web Services",
+            "Software",
+            0.97,
+            "UNMATCHED",
+            "POSTED",
+            "HIGH_CONFIDENCE",
+        )
+    ]
+
+    message = _format_ai_review_queue(result)
+
+    assert "1 transaction(s) require AI categorization review" in message
+    assert "Transaction 1" in message
+    assert "Amazon Web Services" in message
+    assert "AI suggestion: Software" in message
+    assert "confidence: 97%" in message
+
+
+def test_ai_assistant_formats_reconciliation_review():
+    from ai_assistant import _format_reconciliation_review
+
+    result = [
+        (
+            10,
+            "2026-08-15",
+            "AWS payment",
+            -129.0,
+            "UNMATCHED",
+            1,
+            "POSSIBLE_MATCH",
+            0.84,
+            "2026-08-01",
+            "Amazon Web Services",
+            -129.0,
+        )
+    ]
+
+    message = _format_reconciliation_review(result)
+
+    assert "1 reconciliation item(s) require review" in message
+    assert "Bank transaction 10" in message
+    assert "AWS payment" in message
+    assert "amount €-129.00" in message
+    assert "status: UNMATCHED" in message
+    assert "match type: POSSIBLE_MATCH" in message
+    assert "confidence: 84%" in message
+
+
+def test_ai_assistant_formats_audit_log():
+    from ai_assistant import _format_audit_log
+
+    result = [
+        (
+            15,
+            None,
+            1,
+            "CATEGORY_APPROVED",
+            "User approved AI-suggested accounting category.",
+            "2026-09-01 13:22:11",
+        )
+    ]
+
+    message = _format_audit_log(result)
+
+    assert "1 recent audit log entry:" in message
+    assert "Audit 15" in message
+    assert "CATEGORY_APPROVED" in message
+    assert "User approved AI-suggested accounting category." in message

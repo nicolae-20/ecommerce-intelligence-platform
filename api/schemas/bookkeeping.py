@@ -20,6 +20,7 @@ class ReviewTransaction(BaseModel):
     ai_confidence: float | None
     reconciliation_status: str
     status: str
+    ai_review_status: str
 
 
 class TransactionActionResponse(BaseModel):
@@ -56,3 +57,6 @@ class AuditLogItem(BaseModel):
     action: str
     details: str | None
     created_at: str
+
+class AIAssistantRequest(BaseModel):
+    question: str

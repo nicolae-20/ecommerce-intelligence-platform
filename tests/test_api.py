@@ -339,3 +339,214 @@ def test_reconciliation_review():
             connection.commit()
     finally:
         connection.close()
+
+
+def test_confirm_reconciliation():
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = 5,
+                    match_type = 'POSSIBLE_MATCH',
+                    match_confidence = 0.90
+                WHERE bank_transaction_id = 4
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+    response = client.post(
+        "/bookkeeping/reconciliation/4/confirm"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["success"] is True
+    assert data["message"] == (
+        "Reconciliation match confirmed successfully."
+    )
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    status,
+                    financial_transaction_id,
+                    match_type,
+                    match_confidence
+                FROM bank_transactions
+                WHERE bank_transaction_id = 4
+            """)
+
+            row = cursor.fetchone()
+
+            assert row[0] == "MATCHED"
+            assert row[1] == 5
+            assert row[2] == "POSSIBLE_MATCH"
+            assert row[3] == 0.90
+
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL,
+                    match_type = NULL,
+                    match_confidence = NULL
+                WHERE bank_transaction_id = 4
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+
+def test_reject_reconciliation():
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = 5,
+                    match_type = 'POSSIBLE_MATCH',
+                    match_confidence = 0.90
+                WHERE bank_transaction_id = 4
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+    response = client.post(
+        "/bookkeeping/reconciliation/4/reject"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["success"] is True
+    assert data["message"] == (
+        "Reconciliation match rejected successfully."
+    )
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    status,
+                    financial_transaction_id,
+                    match_type,
+                    match_confidence
+                FROM bank_transactions
+                WHERE bank_transaction_id = 4
+            """)
+
+            row = cursor.fetchone()
+
+            assert row[0] == "UNMATCHED"
+            assert row[1] is None
+            assert row[2] == "NO_MATCH"
+            assert row[3] == 0
+
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL,
+                    match_type = NULL,
+                    match_confidence = NULL
+                WHERE bank_transaction_id = 4
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+
+def test_investigate_reconciliation():
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL,
+                    match_type = 'NO_MATCH',
+                    match_confidence = 0,
+                    investigation_status = NULL
+                WHERE bank_transaction_id = 3
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+    response = client.post(
+        "/bookkeeping/reconciliation/3/investigate"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["success"] is True
+    assert data["message"] == (
+        "Bank transaction marked as investigated."
+    )
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    status,
+                    match_type,
+                    investigation_status
+                FROM bank_transactions
+                WHERE bank_transaction_id = 3
+            """)
+
+            row = cursor.fetchone()
+
+            assert row[0] == "UNMATCHED"
+            assert row[1] == "NO_MATCH"
+            assert row[2] == "INVESTIGATED"
+
+            # Restore demo state.
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL,
+                    match_type = NULL,
+                    match_confidence = NULL,
+                    investigation_status = NULL
+                WHERE bank_transaction_id = 3
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()

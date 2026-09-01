@@ -503,16 +503,91 @@ def get_reconciliation_review_queue():
                 LEFT JOIN financial_transactions ft
                     ON ft.transaction_id = bt.financial_transaction_id
                 WHERE bt.status = 'UNMATCHED'
-                  AND bt.match_type IN (
-                      'POSSIBLE_MATCH',
-                      'NO_MATCH'
-                  )
+  AND bt.match_type IN (
+      'POSSIBLE_MATCH',
+      'NO_MATCH'
+  )
+  AND (
+      bt.match_type = 'POSSIBLE_MATCH'
+      OR bt.investigation_status IS NULL
+  )
                 ORDER BY bt.bank_transaction_id
             """)
 
             return cursor.fetchall()
     finally:
         connection.close()
+
+
+def reject_bank_transaction_match(bank_transaction_id):
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    financial_transaction_id = NULL,
+                    status = 'UNMATCHED',
+                    match_type = 'NO_MATCH',
+                    match_confidence = 0
+                WHERE bank_transaction_id = :bank_transaction_id
+                  AND match_type = 'POSSIBLE_MATCH'
+            """, {"bank_transaction_id": bank_transaction_id})
+
+            if cursor.rowcount == 0:
+                return False
+
+            connection.commit()
+            return True
+    finally:
+        connection.close()
+
+
+def investigate_bank_transaction(bank_transaction_id):
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    investigation_status = 'INVESTIGATED'
+                WHERE bank_transaction_id = :bank_transaction_id
+                  AND match_type = 'NO_MATCH'
+                  AND status = 'UNMATCHED'
+            """, {"bank_transaction_id": bank_transaction_id})
+
+            if cursor.rowcount == 0:
+                return False
+
+            connection.commit()
+            return True
+    finally:
+        connection.close()
+
+def confirm_bank_transaction_match(bank_transaction_id):
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'MATCHED'
+                WHERE bank_transaction_id = :bank_transaction_id
+                  AND match_type = 'POSSIBLE_MATCH'
+                  AND financial_transaction_id IS NOT NULL
+            """, {"bank_transaction_id": bank_transaction_id})
+
+            if cursor.rowcount == 0:
+                return False
+
+            connection.commit()
+            return True
+    finally:
+        connection.close()
+
 
 def confirm_bank_transaction_match(bank_transaction_id):
     connection = get_connection()

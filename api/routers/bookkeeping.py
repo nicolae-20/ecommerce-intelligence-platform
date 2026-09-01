@@ -14,6 +14,9 @@ from analytics import (
     get_transactions_requiring_review,
     reject_transaction_category,
     get_reconciliation_review_queue,
+    confirm_bank_transaction_match,
+    reject_bank_transaction_match,
+    investigate_bank_transaction,
 )
 
 from api.schemas.bookkeeping import (
@@ -185,3 +188,59 @@ def reconciliation_review():
         )
         for row in rows
     ]
+
+
+@router.post(
+    "/reconciliation/{bank_transaction_id}/confirm",
+    response_model=TransactionActionResponse,
+)
+def confirm_reconciliation(bank_transaction_id: int):
+    success = confirm_bank_transaction_match(bank_transaction_id)
+
+    if not success:
+        return TransactionActionResponse(
+            success=False,
+            message="Reconciliation match could not be confirmed.",
+        )
+
+    return TransactionActionResponse(
+        success=True,
+        message="Reconciliation match confirmed successfully.",
+    )
+
+
+@router.post(
+    "/reconciliation/{bank_transaction_id}/reject",
+    response_model=TransactionActionResponse,
+)
+def reject_reconciliation(bank_transaction_id: int):
+    success = reject_bank_transaction_match(bank_transaction_id)
+
+    if not success:
+        return TransactionActionResponse(
+            success=False,
+            message="Reconciliation match could not be rejected.",
+        )
+
+    return TransactionActionResponse(
+        success=True,
+        message="Reconciliation match rejected successfully.",
+    )
+
+@router.post(
+    "/reconciliation/{bank_transaction_id}/investigate",
+    response_model=TransactionActionResponse,
+)
+def investigate_reconciliation(bank_transaction_id: int):
+    success = investigate_bank_transaction(bank_transaction_id)
+
+    if not success:
+        return TransactionActionResponse(
+            success=False,
+            message="Bank transaction could not be marked as investigated.",
+        )
+
+    return TransactionActionResponse(
+        success=True,
+        message="Bank transaction marked as investigated.",
+    )

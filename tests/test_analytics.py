@@ -18,6 +18,9 @@ from analytics import (
     cancel_transaction_rejection,
     run_reconciliation,
     get_reconciliation_review_queue,
+    reject_bank_transaction_match,
+    confirm_bank_transaction_match,
+    investigate_bank_transaction,
 )
 
 def test_top_customers():
@@ -255,12 +258,16 @@ def test_reconcile_bank_transactions():
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
-                UPDATE bank_transactions
-                SET
-                    status = 'UNMATCHED',
-                    financial_transaction_id = NULL
-                WHERE bank_transaction_id IN (1, 2, 3)
-            """)
+    UPDATE bank_transactions
+    SET
+        status = 'UNMATCHED',
+        financial_transaction_id = NULL,
+        match_type = NULL,
+        match_confidence = NULL,
+        investigation_status = NULL
+    WHERE bank_transaction_id IN (1, 2, 3, 4)
+""")
+            
 
             connection.commit()
     finally:
@@ -389,6 +396,191 @@ def test_reconciliation_review_queue():
                     match_type = NULL,
                     match_confidence = NULL
                 WHERE bank_transaction_id IN (1, 2, 3, 4)
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+
+def test_reject_bank_transaction_match():
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = 5,
+                    match_type = 'POSSIBLE_MATCH',
+                    match_confidence = 0.90
+                WHERE bank_transaction_id = 4
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+    result = reject_bank_transaction_match(4)
+
+    assert result is True
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    status,
+                    financial_transaction_id,
+                    match_type,
+                    match_confidence
+                FROM bank_transactions
+                WHERE bank_transaction_id = 4
+            """)
+
+            row = cursor.fetchone()
+
+            assert row[0] == "UNMATCHED"
+            assert row[1] is None
+            assert row[2] == "NO_MATCH"
+            assert row[3] == 0
+
+            # Restore the demo state.
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL,
+                    match_type = NULL,
+                    match_confidence = NULL
+                WHERE bank_transaction_id = 4
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+
+def test_confirm_bank_transaction_match():
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = 5,
+                    match_type = 'POSSIBLE_MATCH',
+                    match_confidence = 0.90
+                WHERE bank_transaction_id = 4
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+    result = confirm_bank_transaction_match(4)
+
+    assert result is True
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    status,
+                    financial_transaction_id,
+                    match_type,
+                    match_confidence
+                FROM bank_transactions
+                WHERE bank_transaction_id = 4
+            """)
+
+            row = cursor.fetchone()
+
+            assert row[0] == "MATCHED"
+            assert row[1] == 5
+            assert row[2] == "POSSIBLE_MATCH"
+            assert row[3] == 0.90
+
+            # Restore the demo state.
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL,
+                    match_type = NULL,
+                    match_confidence = NULL
+                WHERE bank_transaction_id = 4
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+
+def test_investigate_bank_transaction():
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL,
+                    match_type = 'NO_MATCH',
+                    match_confidence = 0,
+                    investigation_status = NULL
+                WHERE bank_transaction_id = 3
+            """)
+
+            connection.commit()
+    finally:
+        connection.close()
+
+    result = investigate_bank_transaction(3)
+
+    assert result is True
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    status,
+                    match_type,
+                    investigation_status
+                FROM bank_transactions
+                WHERE bank_transaction_id = 3
+            """)
+
+            row = cursor.fetchone()
+
+            assert row[0] == "UNMATCHED"
+            assert row[1] == "NO_MATCH"
+            assert row[2] == "INVESTIGATED"
+
+            cursor.execute("""
+                UPDATE bank_transactions
+                SET
+                    status = 'UNMATCHED',
+                    financial_transaction_id = NULL,
+                    match_type = NULL,
+                    match_confidence = NULL,
+                    investigation_status = NULL
+                WHERE bank_transaction_id = 3
             """)
 
             connection.commit()

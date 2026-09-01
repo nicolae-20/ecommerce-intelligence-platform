@@ -367,6 +367,90 @@ const handleCancel = async (transactionId: number) => {
   }
 }
 
+const handleConfirmReconciliation = async (
+  bankTransactionId: number
+) => {
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:8000/bookkeeping/reconciliation/${bankTransactionId}/confirm`,
+      {
+        method: "POST",
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error("Failed to confirm reconciliation")
+    }
+
+    setReconciliationReview((current) =>
+      current.filter(
+        (item) =>
+          item.bank_transaction_id !== bankTransactionId
+      )
+    )
+  } catch {
+    setError("Could not confirm reconciliation")
+  }
+}
+
+const handleRejectReconciliation = async (
+  bankTransactionId: number
+) => {
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:8000/bookkeeping/reconciliation/${bankTransactionId}/reject`,
+      {
+        method: "POST",
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error("Failed to reject reconciliation")
+    }
+
+    setReconciliationReview((current) =>
+      current.map((item) =>
+        item.bank_transaction_id === bankTransactionId
+          ? {
+              ...item,
+              financial_transaction_id: null,
+              match_type: "NO_MATCH",
+              match_confidence: 0,
+            }
+          : item
+      )
+    )
+  } catch {
+    setError("Could not reject reconciliation")
+  }
+}
+
+const handleInvestigateReconciliation = async (
+  bankTransactionId: number
+) => {
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:8000/bookkeeping/reconciliation/${bankTransactionId}/investigate`,
+      {
+        method: "POST",
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error("Failed to investigate reconciliation")
+    }
+
+    setReconciliationReview((current) =>
+      current.filter(
+        (item) =>
+          item.bank_transaction_id !== bankTransactionId
+      )
+    )
+  } catch {
+    setError("Could not investigate reconciliation")
+  }
+}
+
   return (
     <main className="dashboard">
       <header className="dashboard-header">
@@ -628,6 +712,44 @@ const handleCancel = async (transactionId: number) => {
               System amount: €{item.system_amount.toFixed(2)}
             </span>
           )}
+          {item.match_type === "POSSIBLE_MATCH" && (
+  <>
+    <button
+      className="confirm-match-button"
+      onClick={() =>
+        handleConfirmReconciliation(
+          item.bank_transaction_id
+        )
+      }
+    >
+      Confirm Match
+    </button>
+
+    <button
+      className="reject-match-button"
+      onClick={() =>
+        handleRejectReconciliation(
+          item.bank_transaction_id
+        )
+      }
+    >
+      Reject Match
+    </button>
+  </>
+)}
+
+{item.match_type === "NO_MATCH" && (
+  <button
+    className="investigate-button"
+    onClick={() =>
+  handleInvestigateReconciliation(
+    item.bank_transaction_id
+  )
+}
+  >
+    Investigate
+  </button>
+)}
         </div>
       </div>
     ))

@@ -22,6 +22,8 @@ Current implementation state belongs in `PROJECT_STATUS.md`.
 
 Future work belongs in `ROADMAP.md`.
 
+Delegation and multi-agent workflow rules belong in `ORCHESTRATION.md`.
+
 ---
 
 # 2. Project Mission
@@ -83,13 +85,22 @@ Read:
 
 This file defines the planned order of future work.
 
-## 3.4 Actual implementation
+## 3.4 Agent orchestration
+
+Read:
+
+`ORCHESTRATION.md`
+
+This file defines role selection, delegation, ownership, quality gates, and
+usage-efficiency rules.
+
+## 3.5 Actual implementation
 
 Inspect the repository.
 
 The code and tests are authoritative when documentation and implementation disagree.
 
-## 3.5 Git history
+## 3.6 Git history
 
 Use Git history when architectural intent or previous changes are unclear.
 
@@ -100,15 +111,16 @@ Use Git history when architectural intent or previous changes are unclear.
 Before implementing a roadmap task:
 
 1. Read `AGENTS.md`.
-2. Read `PROJECT_STATUS.md`.
+2. Read the current `PROJECT_STATUS.md` sections relevant to the task.
 3. Read the relevant section of `ROADMAP.md`.
-4. Inspect the files related to the current milestone.
-5. Inspect existing tests covering that functionality.
-6. Check `git status`.
-7. Determine whether documentation still matches the implementation.
-8. Do not begin unrelated roadmap work.
-9. Make the smallest coherent change that advances the current milestone.
-10. Run the relevant tests after implementation.
+4. Read `ORCHESTRATION.md`.
+5. Inspect the files related to the current milestone.
+6. Inspect existing tests covering that functionality.
+7. Check `git status`.
+8. Determine whether documentation still matches the implementation.
+9. Do not begin unrelated roadmap work.
+10. Make the smallest coherent change that advances the current milestone.
+11. Run the relevant tests after implementation.
 
 Do not rely only on roadmap descriptions.
 
@@ -182,17 +194,17 @@ npm run build
 Backend test suite:
 
 ```cmd
-pytest
+pytest tests
 ```
 
 ---
 
 # 6. Current Known Test Snapshot
 
-At the creation of this handoff:
+At the current verified checkpoint:
 
 ```text
-86 passed
+92 passed
 ```
 
 This is a historical checkpoint, not a permanently hard-coded expected test count.
@@ -273,7 +285,7 @@ If an API response must change:
 Run:
 
 ```cmd
-pytest
+pytest tests
 ```
 
 after a meaningful backend milestone.
@@ -748,15 +760,15 @@ Before ending a milestone session:
 When asked simply to continue the project:
 
 1. read `AGENTS.md`
-2. read `PROJECT_STATUS.md`
-3. read `ROADMAP.md`
-4. inspect the repository
-5. identify the first incomplete milestone
-6. inspect relevant implementation and tests
+2. read the current `PROJECT_STATUS.md` sections relevant to the next milestone
+3. read only the relevant `ROADMAP.md` milestone
+4. read `ORCHESTRATION.md`
+5. inspect the relevant implementation and tests
+6. identify the first incomplete milestone
 7. implement only that milestone
-8. run tests
+8. run the appropriate quality gates
 9. fix regressions
-10. update project status
+10. update project status and roadmap only after verification
 11. explain what changed and what should happen next
 
 Do not ask the user to manually copy code when direct repository editing is available.

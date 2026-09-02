@@ -1436,14 +1436,30 @@ def test_ai_tool_definitions():
         "get_ai_review_queue",
         "get_reconciliation_review",
         "get_audit_log",
+        "get_transactions_by_date",
+        "get_transactions",
     }
+
+    assert "get_transactions" in names
+
+    transaction_tool = next(
+        tool
+        for tool in TOOL_DEFINITIONS
+        if tool["name"] == "get_transactions"
+    )
+
+    assert transaction_tool["type"] == "function"
+    assert "category" in transaction_tool["parameters"]["properties"]
+    assert "vendor" in transaction_tool["parameters"]["properties"]
+    assert "min_amount" in transaction_tool["parameters"]["properties"]
+    assert "max_amount" in transaction_tool["parameters"]["properties"]
+    assert "status" in transaction_tool["parameters"]["properties"]
 
     for tool in TOOL_DEFINITIONS:
         assert tool["type"] == "function"
         assert tool["description"]
         assert tool["parameters"]["type"] == "object"
         assert tool["parameters"]["additionalProperties"] is False
-
 
 def test_ai_assistant_selects_bookkeeping_summary():
     from ai_assistant import ask_assistant
@@ -1597,3 +1613,474 @@ def test_ai_assistant_formats_audit_log():
     assert "Audit 15" in message
     assert "CATEGORY_APPROVED" in message
     assert "User approved AI-suggested accounting category." in message
+
+def test_ai_assistant_openai_executes_tool_call():
+    from ai_assistant import ask_assistant_openai
+
+    class ToolCall:
+        type = "function_call"
+        name = "get_bookkeeping_summary"
+        arguments = "{}"
+        call_id = "call_123"
+
+    class FirstResponse:
+        id = "resp_123"
+        output = [ToolCall()]
+        output_text = ""
+
+    class FinalResponse:
+        output_text = (
+            "Your bookkeeping summary shows revenue of €950.00 "
+            "and expenses of €228.50."
+        )
+
+    class MockResponses:
+        def __init__(self):
+            self.calls = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+
+            if len(self.calls) == 1:
+                return FirstResponse()
+
+            return FinalResponse()
+
+
+    class MockClient:
+        def __init__(self):
+            self.responses = MockResponses()
+
+    client = MockClient()
+
+    result = ask_assistant_openai(
+        "What's our bookkeeping summary?",
+        client=client,
+    )
+
+    assert result.tool_name == "get_bookkeeping_summary"
+    assert result.tool_result is not None
+    assert "€950.00" in result.message
+    assert "€228.50" in result.message
+
+    assert len(client.responses.calls) == 2
+
+    second_call = client.responses.calls[1]
+
+    assert second_call["previous_response_id"] == "resp_123"
+
+    tool_output = second_call["input"][0]
+
+    assert tool_output["type"] == "function_call_output"
+    assert tool_output["call_id"] == "call_123"
+
+def test_ai_assistant_defaults_to_demo_mode(monkeypatch):
+    from ai_assistant import ask_assistant
+
+    monkeypatch.delenv(
+        "AI_ASSISTANT_MODE",
+        raising=False,
+    )
+
+    response = ask_assistant(
+        "What's our bookkeeping summary?"
+    )
+
+    assert response.tool_name == "get_bookkeeping_summary"
+    assert response.tool_result is not None
+    assert "bookkeeping summary" in response.message.lower()
+
+
+def test_ai_assistant_openai_mode(monkeypatch):
+    import ai_assistant
+
+    monkeypatch.setenv(
+        "AI_ASSISTANT_MODE",
+        "openai",
+    )
+
+    expected = ai_assistant.AssistantResponse(
+        message="Mock OpenAI response",
+        tool_name="get_bookkeeping_summary",
+        tool_result={"test": True},
+    )
+
+    def mock_openai(question):
+        assert question == "What's our bookkeeping summary?"
+        return expected
+
+    monkeypatch.setattr(
+        ai_assistant,
+        "ask_assistant_openai",
+        mock_openai,
+    )
+
+    response = ai_assistant.ask_assistant(
+        "What's our bookkeeping summary?"
+    )
+
+    assert response is expected
+
+
+def test_ai_assistant_rejects_invalid_mode(monkeypatch):
+    import pytest
+
+    from ai_assistant import ask_assistant
+
+    monkeypatch.setenv(
+        "AI_ASSISTANT_MODE",
+        "invalid",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="AI_ASSISTANT_MODE must be 'demo' or 'openai'",
+    ):
+        ask_assistant(
+            "What's our bookkeeping summary?"
+        )
+
+
+def test_ai_assistant_handles_multiple_tools():
+    from ai_assistant import ask_assistant
+
+    response = ask_assistant(
+        "Give me the bookkeeping summary and "
+        "tell me if there are any reconciliation issues."
+    )
+
+    assert response.tool_name is not None
+    assert "get_bookkeeping_summary" in response.tool_name
+    assert "get_reconciliation_review" in response.tool_name
+
+    assert isinstance(response.tool_result, list)
+    assert len(response.tool_result) == 2
+
+    assert "bookkeeping summary" in response.message.lower()
+    assert "reconciliation" in response.message.lower()
+
+
+
+def test_ai_assistant_handles_ai_review_and_audit():
+    from ai_assistant import ask_assistant
+
+    response = ask_assistant(
+        "Show me AI review items and recent audit activity."
+    )
+
+    assert "get_ai_review_queue" in response.tool_name
+    assert "get_audit_log" in response.tool_name
+
+    assert isinstance(response.tool_result, list)
+    assert len(response.tool_result) == 2
+
+def test_tool_get_transactions_by_date():
+    from ai_tools import tool_get_transactions_by_date
+
+    result = tool_get_transactions_by_date(
+        start_date="2026-08-01",
+        end_date="2026-08-10",
+    )
+
+    assert isinstance(result, list)
+    assert len(result) > 0
+
+    for transaction in result:
+        assert "transaction_id" in transaction
+        assert "transaction_date" in transaction
+        assert "description" in transaction
+        assert "amount" in transaction
+
+def test_transactions_by_date_tool_definition():
+    from ai_tools import TOOL_DEFINITIONS, TOOL_REGISTRY
+
+    assert "get_transactions_by_date" in TOOL_REGISTRY
+    assert callable(
+        TOOL_REGISTRY["get_transactions_by_date"]
+    )
+
+    definition = next(
+        tool
+        for tool in TOOL_DEFINITIONS
+        if tool["name"] == "get_transactions_by_date"
+    )
+
+    assert definition["type"] == "function"
+    assert definition["parameters"]["properties"][
+        "start_date"
+    ]["type"] == "string"
+    assert definition["parameters"]["properties"][
+        "end_date"
+    ]["type"] == "string"
+    assert definition["parameters"]["required"] == [
+        "start_date",
+        "end_date",
+    ]
+
+def test_ai_assistant_selects_transactions_by_date_tool():
+    from ai_assistant import _select_tools
+
+    tools = _select_tools(
+        "Show me transactions from 2026-08-01 to 2026-08-10."
+    )
+
+    assert "get_transactions_by_date" in tools
+
+
+def test_extract_date_range():
+    from ai_assistant import _extract_date_range
+
+    result = _extract_date_range(
+        "Show me transactions from 2026-08-01 to 2026-08-10."
+    )
+
+    assert result == (
+        "2026-08-01",
+        "2026-08-10",
+    )
+
+
+def test_ai_assistant_get_transactions_by_date():
+    from ai_assistant import ask_assistant
+
+    response = ask_assistant(
+        "Show me transactions from "
+        "2026-08-01 to 2026-08-10."
+    )
+
+    assert response.tool_name == "get_transactions_by_date"
+    assert isinstance(response.tool_result, list)
+    assert len(response.tool_result) > 0
+
+    assert "transaction(s) found" in response.message
+
+
+def test_extract_date_range_returns_none_when_dates_are_missing():
+    from ai_assistant import _extract_date_range
+
+    assert _extract_date_range(
+        "Show me transactions from August."
+    ) is None
+
+
+def test_execute_tool_without_arguments():
+    from ai_assistant import _execute_tool
+
+    result = _execute_tool(
+        "get_bookkeeping_summary"
+    )
+
+    assert result is not None
+
+
+def test_execute_tool_with_arguments():
+    from ai_assistant import _execute_tool
+
+    result = _execute_tool(
+        "get_transactions_by_date",
+        {
+            "start_date": "2026-08-01",
+            "end_date": "2026-08-10",
+        },
+    )
+
+    assert isinstance(result, list)
+
+
+def test_execute_tool_rejects_unknown_tool():
+    import pytest
+
+    from ai_assistant import _execute_tool
+
+    with pytest.raises(
+        ValueError,
+        match="Unknown AI tool requested",
+    ):
+        _execute_tool("does_not_exist")
+
+
+def test_tool_get_transactions_with_filters():
+    from ai_tools import tool_get_transactions
+
+    result = tool_get_transactions(
+        category="Software",
+        min_amount=50,
+    )
+
+    assert isinstance(result, list)
+
+    for transaction in result:
+        assert transaction["category"] == "Software"
+        assert abs(float(transaction["amount"])) >= 50
+
+
+def test_tool_get_transactions_filters_by_status():
+    from ai_tools import tool_get_transactions
+
+    result = tool_get_transactions(
+        status="PENDING",
+    )
+
+    assert isinstance(result, list)
+
+    for transaction in result:
+        assert transaction["status"] == "PENDING"
+
+
+def test_tool_get_transactions_filters_by_vendor():
+    from ai_tools import tool_get_transactions
+
+    result = tool_get_transactions(
+        vendor="microsoft",
+    )
+
+    assert result
+
+    for transaction in result:
+        assert "microsoft" in transaction["vendor"].lower()
+
+
+def test_tool_get_transactions_combines_vendor_with_existing_filters():
+    from ai_tools import tool_get_transactions
+
+    result = tool_get_transactions(
+        category="Office Supplies",
+        vendor="office depot",
+        min_amount=80,
+        max_amount=90,
+        status="POSTED",
+        start_date="2026-08-01",
+        end_date="2026-08-31",
+    )
+
+    assert result
+
+    for transaction in result:
+        assert transaction["category"] == "Office Supplies"
+        assert "office depot" in transaction["vendor"].lower()
+        assert 80 <= abs(float(transaction["amount"])) <= 90
+        assert transaction["status"] == "POSTED"
+
+
+def test_extract_transaction_filters():
+    from ai_assistant import _extract_transaction_filters
+
+    result = _extract_transaction_filters(
+        "Show me Software expenses over €50"
+    )
+
+    assert result == {
+        "category": "Software",
+        "vendor": None,
+        "min_amount": 50.0,
+        "max_amount": None,
+        "status": None,
+        "start_date": None,
+        "end_date": None,
+    }
+
+
+def test_extract_transaction_filters_with_status():
+    from ai_assistant import _extract_transaction_filters
+
+    result = _extract_transaction_filters(
+        "Show me pending Software transactions under €100"
+    )
+
+    assert result["category"] == "Software"
+    assert result["max_amount"] == 100.0
+    assert result["status"] == "PENDING"
+
+
+def test_extract_transaction_filters_with_vendor():
+    from ai_assistant import _extract_transaction_filters
+
+    result = _extract_transaction_filters(
+        "Show me Microsoft transactions."
+    )
+
+    assert result["vendor"] == "Microsoft"
+
+
+def test_demo_assistant_vendor_only_transactions():
+    from ai_assistant import ask_assistant
+
+    response = ask_assistant(
+        "Show me Microsoft transactions."
+    )
+
+    assert response.tool_name == "get_transactions"
+    assert response.tool_result
+
+    transactions = response.tool_result[0]["result"]
+
+    assert transactions
+    assert all(
+        transaction["vendor"] == "Microsoft"
+        for transaction in transactions
+    )
+    assert "vendor: Microsoft" in response.message
+
+
+def test_demo_assistant_combines_vendor_with_existing_filters():
+    from ai_assistant import ask_assistant
+
+    response = ask_assistant(
+        "Show me posted Office Depot Office Supplies expenses over €80 "
+        "between 2026-08-01 and 2026-08-31."
+    )
+
+    assert response.tool_name == "get_transactions"
+
+    transactions = response.tool_result[0]["result"]
+
+    assert transactions
+
+    for transaction in transactions:
+        assert transaction["vendor"] == "Office Depot"
+        assert transaction["category"] == "Office Supplies"
+        assert abs(float(transaction["amount"])) >= 80
+        assert transaction["status"] == "POSTED"
+
+
+def test_demo_assistant_filtered_transactions():
+    from ai_assistant import ask_assistant
+
+    response = ask_assistant(
+        "Show me Software expenses over €50"
+    )
+
+    assert response.tool_name == "get_transactions"
+    assert response.tool_result is not None
+
+
+
+
+def test_extract_transaction_filters_with_date_range():
+    from ai_assistant import _extract_transaction_filters
+
+    result = _extract_transaction_filters(
+        "Show me Software expenses over €50 "
+        "between 2026-08-01 and 2026-08-31"
+    )
+
+    assert result == {
+        "category": "Software",
+        "vendor": None,
+        "min_amount": 50.0,
+        "max_amount": None,
+        "status": None,
+        "start_date": "2026-08-01",
+        "end_date": "2026-08-31",
+    }
+
+def test_demo_assistant_filtered_transactions_with_dates():
+    from ai_assistant import ask_assistant
+
+    response = ask_assistant(
+        "Show me Software expenses over €50 "
+        "between 2026-08-01 and 2026-08-31"
+    )
+
+    assert response.tool_name == "get_transactions"
+    assert response.tool_result is not None

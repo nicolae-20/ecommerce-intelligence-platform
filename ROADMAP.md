@@ -31,6 +31,14 @@ Current verified test baseline:
 0 errors
 ```
 
+Current automated regression command:
+
+```cmd
+pytest tests
+```
+
+Credential-history remediation is complete and fresh-clone validated.
+
 Current next area:
 
 ```text
@@ -125,6 +133,15 @@ AI Assistant frontend polish is NOT included in this completed list.
 * [x] transaction status filtering
 * [x] date filtering in general transaction query
 * [x] vendor filtering
+
+## Security remediation
+
+* [x] exposed Oracle credential rotated
+* [x] hard-coded database credentials removed from tracked source
+* [x] credential-bearing Git history removed with `git-filter-repo` sensitive-data-removal mode
+* [x] rewritten `main` updated with exact force-with-lease protection
+* [x] fresh-clone history, source, and automated-test validation completed
+* [x] `.env` remains ignored and untracked
 
 ---
 
@@ -1019,6 +1036,19 @@ Test:
 Testing already exists throughout development.
 
 This phase is a dedicated final quality pass.
+
+## Milestone 11.1 — Test Suite Separation
+
+Separate the current live-Oracle-heavy backend suite into clearly selected
+test layers.
+
+### Definition of Done
+
+* [ ] fast unit and API tests can run without database credentials
+* [ ] live Oracle integration tests are explicitly marked or isolated
+* [ ] `python/test_database.py` performs no database work during pytest discovery
+* [ ] local and CI test commands document which layer they execute
+* [ ] Demo/OpenAI mock tests continue without paid API calls
 
 Review coverage for:
 

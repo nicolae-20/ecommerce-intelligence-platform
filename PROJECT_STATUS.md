@@ -88,11 +88,15 @@ cd frontend
 npm run build
 ```
 
-Tests:
+Automated regression suite:
 
 ```cmd
-pytest
+pytest tests
 ```
+
+The current automated suite includes live Oracle integration coverage. See the
+test-architecture limitation in Section 24 before attempting to run it in a
+credential-free clone.
 
 ---
 
@@ -760,6 +764,27 @@ Current known baseline:
 92 passed
 ```
 
+Current automated regression command:
+
+```cmd
+pytest tests
+```
+
+## Test architecture limitation
+
+Most backend tests currently depend on the live Oracle development database.
+They are therefore integration tests rather than fast, credential-free unit
+tests.
+
+`python/test_database.py` also performs live database work during pytest
+discovery. A broad `pytest` invocation can collect that smoke script before the
+automated suite begins.
+
+Future test hygiene should separate fast credential-free tests from explicitly
+selected Oracle integration tests. The live smoke script should also stop doing
+database work during discovery. Until that work is complete, `pytest tests` is
+the defined automated regression suite.
+
 Tests currently cover significant areas including:
 
 * analytics
@@ -854,11 +879,26 @@ longer contains hard-coded Oracle credentials.
 `python/.env` is ignored by Git through the repository's `.env` ignore rule
 and is not tracked.
 
-A database credential previously existed in committed Git history. Removing
-it from the working tree does not remove it from earlier commits, so the
-credential must be rotated manually before the repository is shared.
+The previously exposed Oracle credential has been rotated. Hard-coded database
+credentials were removed from tracked source, and database access now uses the
+shared environment-based configuration path.
 
-Do not assume that remains true forever.
+Git history was rewritten with `git-filter-repo` 2.47.0 in
+`--sensitive-data-removal` mode. The rewritten `main` branch was updated using
+an exact `--force-with-lease`; the old offending commit is no longer reachable
+from advertised GitHub branches or tags.
+
+Fresh-clone validation passed, including the credential-isolated automated
+suite:
+
+```text
+92 passed
+0 failed
+0 errors
+```
+
+`python/.env` remains ignored and untracked. It was not copied into the
+rewritten or validation clones.
 
 Before milestone commits:
 

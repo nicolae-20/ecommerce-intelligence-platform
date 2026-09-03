@@ -3841,6 +3841,24 @@ def test_uncategorized_investigation_read_only_contract(monkeypatch):
     assert result["evidence"]["historical_examples"][0][
         "transaction_id"
     ] == 2
+    assert (
+        result["evidence"]["historical_examples"][0][
+            "retrieval_score"
+        ]
+        > 0
+    )
+    assert "EXACT_VENDOR" in (
+        result["evidence"]["historical_examples"][0][
+            "match_reasons"
+        ]
+    )
+    assert result["evidence"]["retrieved_categories"] == [
+        "Software"
+    ]
+    assert (
+        result["evidence"]["retrieved_category_conflict"]
+        is False
+    )
 
     assert connection.commit_called is False
     assert connection.closed is True
@@ -5209,3 +5227,137 @@ def test_rag_trusted_history_description_query_uses_final_category(
             "AI_SUGGESTED_CATEGORY"
             not in normalized
         )
+
+def test_rag_evidence_explanation_reports_deterministic_signals():
+    from accounting_rag import (
+        explain_accounting_example,
+    )
+
+    evidence = explain_accounting_example(
+        description="Microsoft 365 subscription",
+        vendor="Microsoft",
+        example={
+            "transaction_id": 10,
+            "description": "Microsoft 365 subscription",
+            "vendor": "Microsoft",
+            "category": "Software",
+        },
+    )
+
+    assert evidence["retrieval_score"] == 340
+    assert evidence["match_reasons"] == [
+        "EXACT_VENDOR",
+        "EXACT_DESCRIPTION",
+        "DESCRIPTION_TOKEN_OVERLAP",
+    ]
+
+
+def test_rag_evidence_summary_detects_category_conflict():
+    from accounting_rag import (
+        summarize_retrieved_accounting_evidence,
+    )
+
+    summary = summarize_retrieved_accounting_evidence(
+        description="Microsoft 365 subscription",
+        vendor="Microsoft",
+        examples=[
+            {
+                "transaction_id": 10,
+                "description": "Microsoft 365 subscription",
+                "vendor": "Microsoft",
+                "category": "Software",
+            },
+            {
+                "transaction_id": 11,
+                "description": "Microsoft office supplies",
+                "vendor": "Microsoft",
+                "category": "Office Supplies",
+            },
+        ],
+    )
+
+    assert summary["retrieved_categories"] == [
+        "Office Supplies",
+        "Software",
+    ]
+    assert summary["retrieved_category_conflict"] is True
+
+    assert summary["historical_examples"][0][
+        "retrieval_score"
+    ] == 340
+    assert "EXACT_VENDOR" in summary[
+        "historical_examples"
+    ][1]["match_reasons"]
+
+
+def test_uncategorized_investigation_formatter_explains_rag_evidence():
+    from ai_assistant import (
+        _format_uncategorized_investigation,
+    )
+
+    result = {
+        "transaction": {
+            "transaction_id": 7,
+            "transaction_date": "2026-09-01",
+            "transaction_type": "EXPENSE",
+            "description": "Microsoft 365 subscription",
+            "amount": -120,
+            "category": None,
+            "vendor": "Microsoft",
+            "reconciliation_status": "UNMATCHED",
+            "status": "POSTED",
+        },
+        "investigation_status": "RECOMMENDATION_READY",
+        "current_ai_suggestion": None,
+        "evidence": {
+            "available_categories": [
+                "Software",
+                "Office Supplies",
+            ],
+            "historical_examples": [
+                {
+                    "transaction_id": 10,
+                    "description": "Microsoft 365 subscription",
+                    "vendor": "Microsoft",
+                    "category": "Software",
+                    "retrieval_score": 340,
+                    "match_reasons": [
+                        "EXACT_VENDOR",
+                        "EXACT_DESCRIPTION",
+                        "DESCRIPTION_TOKEN_OVERLAP",
+                    ],
+                }
+            ],
+            "supporting_example_count": 1,
+            "retrieved_categories": [
+                "Office Supplies",
+                "Software",
+            ],
+            "retrieved_category_conflict": True,
+        },
+        "recommendation": {
+            "category": "Software",
+            "confidence": 0.95,
+            "high_confidence": True,
+            "rationale": (
+                "Retrieved history contains mixed evidence."
+            ),
+        },
+        "requires_human_review": True,
+    }
+
+    message = _format_uncategorized_investigation(
+        result
+    )
+
+    assert "retrieval score 340" in message
+    assert "exact vendor" in message
+    assert "exact description" in message
+    assert "not AI confidence" in message
+    assert (
+        "historical examples span multiple categories"
+        in message
+    )
+    assert "Office Supplies" in message
+    assert "Software" in message
+    assert "human review and approval" in message

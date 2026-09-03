@@ -1047,52 +1047,80 @@ Not yet complete.
 
 # 29. Immediate Next Milestone
 
-Milestone 5.2 — Trusted Historical Evidence is complete.
+Milestone 5.3 — RAG Evidence Quality and Explainability is complete.
 
-Verified regression baseline:
+Verified backend regression baseline:
 
 ```text
-167 passed
+170 passed
 0 failed
 0 errors
 ```
 
-Targeted RAG verification:
+Phase 5 is now complete.
 
-```text
-8 passed
-136 deselected
-```
+Completed RAG milestones:
 
-Trusted historical evidence now uses the final accounting-category
-relationship rather than unapproved AI suggestion state.
+* 5.1 Deterministic RAG Example Ranking
+* 5.2 Trusted Historical Evidence
+* 5.3 RAG Evidence Quality and Explainability
 
-The RAG trust boundary is:
+The RAG system now provides:
 
-```text
-financial_transactions.accounting_category_id IS NOT NULL
-```
+* deterministic example ranking
+* trusted final-category historical evidence
+* bounded retrieval
+* deduplication
+* relevance scores
+* explicit match reasons
+* mixed-category conflict detection
+* human-readable investigation evidence
+* clear separation between retrieval relevance and AI confidence
 
-with category names resolved through active rows in
-`accounting_categories`.
+The accounting safety model remains unchanged:
 
-This supports both:
+* stored AI suggestions are not accounting truth
+* human-approved or manually assigned final categories are trusted history
+* RAG retrieval is read-only
+* investigation recommendations are read-only
+* consequential accounting categorization still requires human approval
 
-* human-approved AI category suggestions
-* manually assigned accounting categories
+# 30. Immediate Next Query Targets
 
-while excluding AI suggestions that have not been accepted as final
-accounting state.
+Begin Phase 6 with AI categorization-quality inspection.
 
-Important architectural findings:
+Inspect:
 
-* `ai_suggested_category` is advisory state only
-* `ai_confidence` is advisory state only
-* `ai_review_status` is calculated from suggestion state and confidence
-* `CATEGORY_APPROVED` audit entries exist for AI approvals
-* manual category assignment currently does not create the same audit action
-* therefore `audit_log` is not the universal trusted-history marker
-* `accounting_category_id` is the current common final-category signal
+* `_demo_category_suggestion`
+* `CategorySuggestion`
+* `AI_CONFIDENCE_THRESHOLD`
+* `suggest_transaction_category`
+* `validate_category_suggestion`
+* categorization write paths
+* categorization tests
+* ambiguous-vendor and ambiguous-description behavior
+* mixed RAG evidence behavior
+
+The goal is to improve recommendation quality and confidence calibration,
+not to add autonomous accounting writes.
+
+# 31. Next Milestone Definition of Done
+
+The first Phase 6 milestone should be defined after inspection.
+
+Phase 6 work must preserve:
+
+* Chart of Accounts validation
+* human approval for final categorization
+* trusted historical RAG evidence
+* deterministic Demo Mode
+* read-only investigation behavior
+* retrieval-score / AI-confidence separation
+* no required paid OpenAI usage
+* targeted evaluation tests
+* full backend regression
+
+---
 
 # 30. Immediate Next Query Targets
 

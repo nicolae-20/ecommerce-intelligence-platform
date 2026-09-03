@@ -5,7 +5,6 @@ from database import get_connection
 
 
 MAX_CONTEXT_EXAMPLES = 5
-CANDIDATE_FETCH_LIMIT = 20
 
 DESCRIPTION_STOP_WORDS = frozenset({
     "and",
@@ -65,12 +64,13 @@ def _description_tokens(
     return tuple(tokens)
 
 
-def _score_accounting_example(
+def _evaluate_accounting_example(
     description: str | None,
     vendor: str | None,
     example: dict,
-) -> int:
+) -> tuple[int, list[str]]:
     score = 0
+    match_reasons: list[str] = []
 
     query_vendor = _normalize_text(vendor)
     example_vendor = _normalize_text(
@@ -80,11 +80,13 @@ def _score_accounting_example(
     if query_vendor and example_vendor:
         if query_vendor == example_vendor:
             score += 200
+            match_reasons.append("EXACT_VENDOR")
         elif (
             query_vendor in example_vendor
             or example_vendor in query_vendor
         ):
             score += 120
+            match_reasons.append("PARTIAL_VENDOR")
 
     query_description = _normalize_text(
         description
@@ -99,6 +101,7 @@ def _score_accounting_example(
         and query_description == example_description
     ):
         score += 50
+        match_reasons.append("EXACT_DESCRIPTION")
 
     query_tokens = set(
         _description_tokens(description)
@@ -113,6 +116,9 @@ def _score_accounting_example(
 
     if overlap:
         score += len(overlap) * 20
+        match_reasons.append(
+            "DESCRIPTION_TOKEN_OVERLAP"
+        )
 
         if query_tokens:
             overlap_ratio = (
@@ -123,7 +129,77 @@ def _score_accounting_example(
                 overlap_ratio * 30
             )
 
-    return score
+    return score, match_reasons
+
+
+def explain_accounting_example(
+    description: str | None,
+    vendor: str | None,
+    example: dict,
+) -> dict:
+    score, match_reasons = (
+        _evaluate_accounting_example(
+            description=description,
+            vendor=vendor,
+            example=example,
+        )
+    )
+
+    return {
+        "retrieval_score": score,
+        "match_reasons": match_reasons,
+    }
+
+
+def _score_accounting_example(
+    description: str | None,
+    vendor: str | None,
+    example: dict,
+) -> int:
+    return explain_accounting_example(
+        description=description,
+        vendor=vendor,
+        example=example,
+    )["retrieval_score"]
+
+
+def summarize_retrieved_accounting_evidence(
+    description: str | None,
+    vendor: str | None,
+    examples: list[dict],
+) -> dict:
+    historical_examples = []
+    retrieved_categories: set[str] = set()
+
+    for example in examples:
+        enriched_example = dict(example)
+
+        enriched_example.update(
+            explain_accounting_example(
+                description=description,
+                vendor=vendor,
+                example=example,
+            )
+        )
+
+        historical_examples.append(
+            enriched_example
+        )
+
+        category = example.get("category")
+
+        if category:
+            retrieved_categories.add(category)
+
+    categories = sorted(retrieved_categories)
+
+    return {
+        "historical_examples": historical_examples,
+        "retrieved_categories": categories,
+        "retrieved_category_conflict": (
+            len(categories) > 1
+        ),
+    }
 
 
 def rank_accounting_examples(

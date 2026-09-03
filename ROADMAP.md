@@ -1720,32 +1720,90 @@ full regression:
 
 ---
 
-# CURRENT NEXT ACTION
+## Milestone 5.3 — RAG Evidence Quality and Explainability
 
-Continue Phase 5 by inspecting the remaining RAG quality surface before
-adding more retrieval complexity.
+Completed deterministic explainability for accounting RAG retrieval.
 
-The next candidate milestone is:
+Implemented:
+
+* deterministic retrieval score metadata
+* explicit retrieval match reasons
+* exact-vendor evidence explanation
+* partial-vendor evidence explanation
+* exact-description evidence explanation
+* description-token-overlap evidence explanation
+* deterministic detection of mixed historical categories
+* structured retrieved-category evidence
+* top historical-example explanation in the AI Assistant
+* explicit warning that retrieval score is relevance, not AI confidence
+* mixed historical evidence surfaced as a human-review warning
+* no automatic category decision based on retrieval score
+* no change to the LLM categorization prompt contract
+* no accounting mutation introduced
+* trusted-history boundary from Milestone 5.2 preserved
+* deterministic ranking from Milestone 5.1 preserved
+
+Validation:
 
 ```text
-Milestone 5.3 — RAG Evidence Quality and Explainability
+full regression:
+170 passed
+0 failed
+0 errors
 ```
 
-Before implementing 5.3:
+### Definition of Done
 
-1. inspect how `AccountingContext.examples` is presented to the LLM
-2. inspect how investigation results expose historical evidence
-3. determine whether retrieval score/reason metadata should be surfaced
-4. determine whether contradictory historical examples are detectable
-5. identify whether additional deterministic safeguards improve accounting
-   usefulness without overlapping Phase 6 AI categorization quality
+* [x] retrieval relevance can be explained deterministically
+* [x] match reasons are machine-readable
+* [x] conflicting retrieved categories are detected
+* [x] conflicts do not automatically change accounting state
+* [x] retrieval score is not represented as AI confidence
+* [x] investigation evidence remains read-only
+* [x] LLM prompt compatibility is preserved
+* [x] trusted final-category history remains authoritative
+* [x] no embeddings or vector database introduced
+* [x] no paid API requirement introduced
+* [x] full backend regression passes with 170 tests
 
-Do not add embeddings, vector databases, or paid API dependencies unless a
-later measured need clearly justifies them.
+---
+
+# CURRENT NEXT ACTION
+
+Phase 5 RAG Improvements is complete.
+
+Completed:
+
+```text
+5.1 Deterministic RAG Example Ranking
+5.2 Trusted Historical Evidence
+5.3 RAG Evidence Quality and Explainability
+```
+
+Continue with:
+
+```text
+Phase 6 — AI Categorization Quality
+```
+
+Phase 6 should improve recommendation quality without weakening the
+accounting safety boundary established in Phases 3 and 5.
+
+Initial Phase 6 investigation should inspect:
+
+* deterministic Demo Mode categorization rules
+* AI confidence behavior
+* category validation behavior
+* transaction type and amount signals available to categorization
+* historical evidence conflict handling
+* whether confidence should be reduced when RAG evidence is mixed
+* evaluation cases for known vendors and ambiguous descriptions
 
 Preserve:
 
-* trusted final-category boundary from Milestone 5.2
-* deterministic ranking from Milestone 5.1
-* human-controlled accounting decisions
-* read-only investigation behavior
+* final accounting decisions remain human-controlled
+* AI suggestions remain advisory until approved
+* RAG historical examples remain trusted final assignments
+* investigation tools remain read-only
+* retrieval score remains distinct from AI confidence
+* no paid API is required for core development

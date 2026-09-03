@@ -1037,7 +1037,10 @@ def investigate_uncategorized_transaction(
     transaction_id,
     client=None,
 ):
-    from accounting_rag import get_accounting_context
+    from accounting_rag import (
+        get_accounting_context,
+        summarize_retrieved_accounting_evidence,
+    )
     from llm_categorizer import (
         suggest_transaction_category,
         validate_category_suggestion,
@@ -1103,6 +1106,8 @@ def investigate_uncategorized_transaction(
                 "available_categories": [],
                 "historical_examples": [],
                 "supporting_example_count": 0,
+                "retrieved_categories": [],
+                "retrieved_category_conflict": False,
             },
             "recommendation": None,
             "requires_human_review": False,
@@ -1135,7 +1140,32 @@ def investigate_uncategorized_transaction(
         if example["category"] == suggestion.category
     ]
 
-    if supporting_examples:
+    retrieval_evidence = (
+        summarize_retrieved_accounting_evidence(
+            description=row[3],
+            vendor=row[6],
+            examples=context.examples,
+        )
+    )
+
+    if retrieval_evidence[
+        "retrieved_category_conflict"
+    ]:
+        category_text = ", ".join(
+            retrieval_evidence[
+                "retrieved_categories"
+            ]
+        )
+
+        rationale = (
+            f"Retrieved confirmed historical examples span "
+            f"multiple categories: {category_text}. "
+            f"{len(supporting_examples)} example(s) support "
+            f"the recommended category {suggestion.category}. "
+            f"This is mixed historical evidence and requires "
+            f"human judgment."
+        )
+    elif supporting_examples:
         rationale = (
             f"{len(supporting_examples)} confirmed historical "
             f"example(s) support the recommended category "
@@ -1165,8 +1195,16 @@ def investigate_uncategorized_transaction(
                 category["account_name"]
                 for category in context.categories
             ],
-            "historical_examples": context.examples,
+            "historical_examples": retrieval_evidence[
+                "historical_examples"
+            ],
             "supporting_example_count": len(supporting_examples),
+            "retrieved_categories": retrieval_evidence[
+                "retrieved_categories"
+            ],
+            "retrieved_category_conflict": retrieval_evidence[
+                "retrieved_category_conflict"
+            ],
         },
         "recommendation": {
             "category": suggestion.category,

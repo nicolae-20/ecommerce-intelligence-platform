@@ -774,6 +774,61 @@ def _format_uncategorized_investigation(result: Any) -> str:
     current_ai_suggestion = result.get("current_ai_suggestion")
     evidence = result["evidence"]
 
+    historical_examples = (
+        evidence.get("historical_examples") or []
+    )
+
+    retrieval_text = ""
+
+    if historical_examples:
+        top_example = historical_examples[0]
+        retrieval_score = top_example.get(
+            "retrieval_score"
+        )
+        match_reasons = top_example.get(
+            "match_reasons"
+        ) or []
+
+        if retrieval_score is not None:
+            reason_text = ", ".join(
+                reason.replace("_", " ").lower()
+                for reason in match_reasons
+            )
+
+            retrieval_text = (
+                f"Top retrieved historical example: "
+                f"transaction "
+                f"{top_example.get('transaction_id', 'N/A')}, "
+                f"category "
+                f"{top_example.get('category', 'N/A')}, "
+                f"retrieval score {retrieval_score}"
+                + (
+                    f", based on {reason_text}. "
+                    if reason_text
+                    else ". "
+                )
+                + (
+                    "This deterministic retrieval score "
+                    "measures relevance; it is not AI confidence. "
+                )
+            )
+
+    conflict_text = ""
+
+    if evidence.get(
+        "retrieved_category_conflict",
+        False,
+    ):
+        categories = evidence.get(
+            "retrieved_categories"
+        ) or []
+
+        conflict_text = (
+            "Retrieved historical examples span multiple "
+            f"categories: {', '.join(categories)}. "
+            "Treat the historical evidence as mixed. "
+        )
+
     stored_suggestion_text = (
         (
             f"Stored AI suggestion: "
@@ -806,6 +861,8 @@ def _format_uncategorized_investigation(result: Any) -> str:
         f"{float(recommendation['confidence']) * 100:.0f}% confidence. "
         f"Supporting confirmed examples: "
         f"{evidence['supporting_example_count']}. "
+        f"{retrieval_text}"
+        f"{conflict_text}"
         f"{recommendation['rationale']} "
         f"Final categorization requires human review and approval."
     )

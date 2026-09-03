@@ -738,6 +738,233 @@ def get_expense_trends(
         connection.close()
 
 
+ANOMALY_LARGE_EXPENSE_MULTIPLIER = 1.50
+ANOMALY_MINIMUM_LARGE_EXPENSE = 100.00
+ANOMALY_MINIMUM_EXPENSE_BASELINE_COUNT = 3
+ANOMALY_REPEATED_BANK_FEE_COUNT = 2
+
+
+def get_financial_anomalies(start_date=None, end_date=None):
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    transaction_id,
+                    transaction_date,
+                    transaction_type,
+                    description,
+                    amount,
+                    category,
+                    vendor,
+                    reconciliation_status,
+                    status
+                FROM financial_transactions
+                WHERE transaction_type IN ('EXPENSE', 'BANK_FEE')
+                  AND status = 'POSTED'
+                  AND (
+                      :start_date IS NULL
+                      OR transaction_date >= TO_TIMESTAMP(:start_date, 'YYYY-MM-DD')
+                  )
+                  AND (
+                      :end_date IS NULL
+                      OR transaction_date < TO_TIMESTAMP(:end_date, 'YYYY-MM-DD')
+                          + INTERVAL '1' DAY
+                  )
+                ORDER BY transaction_date, transaction_id
+            """, {
+                "start_date": start_date,
+                "end_date": end_date,
+            })
+            rows = cursor.fetchall()
+    finally:
+        connection.close()
+
+    def normalize_text(value):
+        if value is None:
+            return ""
+        return " ".join(str(value).strip().lower().split())
+
+    def date_key(value):
+        if value is None:
+            return None
+        if hasattr(value, "date"):
+            value = value.date()
+        return str(value)[:10]
+
+    transactions = [
+        {
+            "transaction_id": row[0],
+            "transaction_date": row[1],
+            "transaction_type": row[2],
+            "description": row[3],
+            "amount": row[4],
+            "category": row[5],
+            "vendor": row[6],
+            "reconciliation_status": row[7],
+            "status": row[8],
+        }
+        for row in rows
+    ]
+
+    absolute_amounts = [
+        round(abs(float(item["amount"])), 2)
+        for item in transactions
+        if item["amount"] is not None
+    ]
+    average_expense = (
+        round(sum(absolute_amounts) / len(absolute_amounts), 2)
+        if absolute_amounts
+        else None
+    )
+    large_expense_threshold = (
+        round(
+            max(
+                ANOMALY_MINIMUM_LARGE_EXPENSE,
+                average_expense * ANOMALY_LARGE_EXPENSE_MULTIPLIER,
+            ),
+            2,
+        )
+        if average_expense is not None
+        else None
+    )
+
+    anomalies = []
+
+    if (
+        len(absolute_amounts) >= ANOMALY_MINIMUM_EXPENSE_BASELINE_COUNT
+        and large_expense_threshold is not None
+    ):
+        for transaction in transactions:
+            amount = round(abs(float(transaction["amount"])), 2)
+            if amount < large_expense_threshold:
+                continue
+            anomalies.append({
+                "anomaly_type": "LARGE_EXPENSE",
+                "severity": (
+                    "HIGH"
+                    if amount >= large_expense_threshold * 2
+                    else "MEDIUM"
+                ),
+                "transaction_ids": [transaction["transaction_id"]],
+                "reason": (
+                    f"Posted expense amount {amount:.2f} is at or above "
+                    f"the deterministic large-expense threshold of "
+                    f"{large_expense_threshold:.2f}."
+                ),
+                "evidence": {
+                    "amount": amount,
+                    "average_expense": average_expense,
+                    "threshold": large_expense_threshold,
+                    "average_multiplier": ANOMALY_LARGE_EXPENSE_MULTIPLIER,
+                    "minimum_threshold": ANOMALY_MINIMUM_LARGE_EXPENSE,
+                    "baseline_transaction_count": len(absolute_amounts),
+                },
+                "requires_human_review": True,
+            })
+
+    duplicate_groups = {}
+    for transaction in transactions:
+        description = normalize_text(transaction["description"])
+        vendor = normalize_text(transaction["vendor"])
+        if not description and not vendor:
+            continue
+        key = (
+            date_key(transaction["transaction_date"]),
+            transaction["transaction_type"],
+            round(abs(float(transaction["amount"])), 2),
+            description,
+            vendor,
+        )
+        duplicate_groups.setdefault(key, []).append(transaction)
+
+    for key, group in duplicate_groups.items():
+        if len(group) < 2:
+            continue
+        anomalies.append({
+            "anomaly_type": "DUPLICATE_TRANSACTION",
+            "severity": "MEDIUM",
+            "transaction_ids": sorted(item["transaction_id"] for item in group),
+            "reason": (
+                f"{len(group)} posted transactions share the same date, "
+                f"transaction type, absolute amount, normalized description, "
+                f"and vendor."
+            ),
+            "evidence": {
+                "transaction_date": key[0],
+                "transaction_type": key[1],
+                "amount": key[2],
+                "description": group[0]["description"],
+                "vendor": group[0]["vendor"],
+                "duplicate_count": len(group),
+            },
+            "requires_human_review": True,
+        })
+
+    bank_fee_groups = {}
+    for transaction in transactions:
+        if transaction["transaction_type"] != "BANK_FEE":
+            continue
+        key = (
+            round(abs(float(transaction["amount"])), 2),
+            normalize_text(transaction["description"]),
+            normalize_text(transaction["vendor"]),
+        )
+        bank_fee_groups.setdefault(key, []).append(transaction)
+
+    for key, group in bank_fee_groups.items():
+        if len(group) < ANOMALY_REPEATED_BANK_FEE_COUNT:
+            continue
+        anomalies.append({
+            "anomaly_type": "REPEATED_BANK_FEE",
+            "severity": "MEDIUM" if len(group) >= 3 else "LOW",
+            "transaction_ids": sorted(item["transaction_id"] for item in group),
+            "reason": (
+                f"The same bank-fee signature appears {len(group)} times in "
+                f"the selected data. This may be legitimate recurring "
+                f"activity, but it is worth reviewing."
+            ),
+            "evidence": {
+                "amount": key[0],
+                "description": group[0]["description"],
+                "vendor": group[0]["vendor"],
+                "occurrence_count": len(group),
+                "transaction_dates": [
+                    date_key(item["transaction_date"])
+                    for item in group
+                ],
+            },
+            "requires_human_review": True,
+        })
+
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "baseline": {
+            "posted_expense_count": len(absolute_amounts),
+            "average_expense": average_expense,
+            "large_expense_threshold": large_expense_threshold,
+        },
+        "rules": {
+            "large_expense": {
+                "average_multiplier": ANOMALY_LARGE_EXPENSE_MULTIPLIER,
+                "minimum_threshold": ANOMALY_MINIMUM_LARGE_EXPENSE,
+                "minimum_baseline_count": ANOMALY_MINIMUM_EXPENSE_BASELINE_COUNT,
+            },
+            "duplicate_transaction": (
+                "same date, transaction type, absolute amount, "
+                "normalized description, and vendor"
+            ),
+            "repeated_bank_fee": {
+                "minimum_occurrences": ANOMALY_REPEATED_BANK_FEE_COUNT,
+            },
+        },
+        "anomaly_count": len(anomalies),
+        "anomalies": anomalies,
+    }
+
+
 def get_transactions_requiring_review():
     connection = get_connection()
 

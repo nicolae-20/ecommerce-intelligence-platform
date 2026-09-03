@@ -722,18 +722,75 @@ functions that confirm, reject, or mark reconciliation items investigated.
 
 ## Milestone 3.3 — Deterministic Anomaly Detection
 
-Start with deterministic analytics.
+Implemented deterministic read-only anomaly detection through:
 
-Potential anomalies:
+```text
+get_financial_anomalies
+```
 
-* unusually large expenses
-* duplicate-looking transactions
-* repeated fees
-* new/unexpected vendors
-* category spending spikes
-* suspicious amount patterns
+The first anomaly set includes:
 
-Expose results through read-only AI tools.
+* unusually large posted expenses
+* exact duplicate-looking transactions
+* repeated bank-fee signatures
+
+Large-expense detection uses an explicit deterministic baseline:
+
+* only posted `EXPENSE` and `BANK_FEE` transactions
+* absolute transaction amounts
+* minimum baseline size of 3 transactions
+* threshold = max(EUR 100, 1.5 x average posted expense)
+
+Duplicate-looking transactions require the same:
+
+* transaction date
+* transaction type
+* absolute amount
+* normalized description
+* normalized vendor
+
+Repeated bank fees group matching:
+
+* absolute amount
+* normalized description
+* normalized vendor
+
+Every anomaly includes:
+
+* anomaly type
+* severity
+* affected transaction IDs
+* deterministic reason
+* supporting evidence
+* explicit human-review requirement
+
+Anomaly signals are investigation aids, not confirmed accounting errors.
+
+The implementation is fully read-only:
+
+* no `UPDATE`
+* no `INSERT`
+* no `DELETE`
+* no database commit
+* no categorization or reconciliation action
+
+Assistant Demo Mode routes anomaly questions through the generic
+`_execute_tool()` boundary.
+
+### Definition of Done
+
+* [x] deterministic anomaly detection is implemented
+* [x] unusually large expenses are detected with an explicit threshold
+* [x] duplicate-looking transactions are detected deterministically
+* [x] repeated bank-fee signatures are detected deterministically
+* [x] every anomaly includes a reason and supporting evidence
+* [x] anomaly results remain investigation signals rather than accounting truth
+* [x] all anomaly detection is read-only
+* [x] no accounting state is modified
+* [x] strict AI tool schema integration is complete
+* [x] Demo Mode routing and formatting are deterministic
+* [x] generic `_execute_tool()` remains the execution boundary
+* [x] tests pass — 161 passed
 
 ---
 
@@ -1425,36 +1482,36 @@ The project is portfolio-ready when:
 Start with:
 
 ```text
-Phase 3
-Milestone 3.3 — Deterministic Anomaly Detection
+Phase 4
+Milestone 4.1 — Core Assistant Interaction
 ```
 
 Goal:
 
-Add a small read-only anomaly layer that identifies accounting transactions
-worthy of investigation using deterministic, explainable rules before adding
-any agentic interpretation.
-
-Initial anomaly candidates:
-
-* unusually large posted expenses
-* duplicate-looking transactions
-* repeated bank fees
-* new or unexpected vendors
-* category spending spikes
-* suspicious repeated amount patterns
+Complete and verify the existing AI Assistant frontend interaction rather than
+rebuilding it from scratch.
 
 Before implementation:
 
-1. inspect the current transaction-query and financial-analytics helpers
-2. choose the smallest high-value anomaly set for the first implementation
-3. define deterministic thresholds and evidence for every anomaly type
-4. prefer reusable SQL/data helpers rather than duplicating analytics logic
-5. ensure every anomaly includes a reason and observable evidence
-6. keep anomaly detection fully read-only
-7. do not let anomaly detection approve, categorize, reconcile, or otherwise mutate accounting state
-8. expose the result through a strict read-only AI tool
-9. preserve generic `_execute_tool()` as the execution boundary
-10. run or confirm the current `154 passed` baseline
+1. inspect the current `frontend/src/App.tsx`
+2. inspect the Assistant API call and response contract
+3. identify which Milestone 4.1 requirements already exist
+4. verify question input and submit behavior
+5. verify loading state
+6. verify readable error handling
+7. verify response display
+8. preserve existing bookkeeping and dashboard behavior
+9. run targeted frontend checks during development
+10. run the production frontend build before closing the milestone
 
-Complete and test Milestone 3.3 before moving to the next portfolio phase.
+Milestone 4.1 Definition of Done:
+
+* Assistant endpoint works from the frontend
+* loading state works
+* errors are readable
+* response rendering is usable
+* no TypeScript errors
+* production build passes
+
+Do not begin structured-result UI work from Milestone 4.2 until the core
+interaction is verified.

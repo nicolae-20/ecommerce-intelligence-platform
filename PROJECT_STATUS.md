@@ -1047,97 +1047,102 @@ Not yet complete.
 
 # 29. Immediate Next Milestone
 
-Milestone 3.2 — Reconciliation Investigation is complete.
+Milestone 3.3 — Deterministic Anomaly Detection is complete.
 
 The current verified backend baseline is:
 
 ```text
-154 passed
+161 passed
 0 failed
 0 errors
 ```
 
-Milestone 3.2 added a dedicated read-only reconciliation investigation path
-that:
-
-* retrieves one bank transaction by ID
-* retrieves its linked financial transaction candidate where available
-* exposes stored match type and confidence
-* calculates deterministic amount differences
-* identifies exact amount matches
-* calculates date differences
-* calculates deterministic meaningful-token description overlap
-* distinguishes possible matches, no-match results, already matched items, and missing items
-* produces an explainable reconciliation assessment
-* requires human review for unresolved reconciliation decisions
-* performs no reconciliation mutation or commit
-
-The specific investigation tool is:
+Milestone 3.3 added the read-only:
 
 ```text
-investigate_reconciliation_issue
+get_financial_anomalies
 ```
 
-The existing `get_reconciliation_review` tool remains the bulk review/listing
-path.
-
-The next planned backend milestone is:
-
-```text
-Phase 3
-Milestone 3.3 — Deterministic Anomaly Detection
-```
-
-The goal is to identify potentially important accounting anomalies through
-deterministic and explainable read-only rules.
-
-Initial anomaly candidates include:
+tool and deterministic anomaly logic for:
 
 * unusually large posted expenses
-* duplicate-looking transactions
-* repeated bank fees
-* new or unexpected vendors
-* category spending spikes
-* repeated or suspicious amount patterns
+* exact duplicate-looking transactions
+* repeated bank-fee signatures
+
+Large-expense detection uses:
+
+* posted `EXPENSE` and `BANK_FEE` transactions
+* absolute amounts
+* a minimum 3-transaction baseline
+* `max(EUR 100, 1.5 x average expense)` as the threshold
+
+Duplicate-looking transactions require matching date, transaction type,
+absolute amount, normalized description, and normalized vendor.
+
+Repeated bank-fee detection groups matching amount, description, and vendor
+signatures.
+
+Every anomaly result exposes:
+
+* anomaly type
+* severity
+* transaction IDs
+* deterministic reason
+* supporting evidence
+* human-review requirement
+
+Anomalies are explicitly treated as investigation signals rather than confirmed
+accounting errors.
+
+The anomaly path performs no accounting write and no commit.
+
+The next planned milestone is:
+
+```text
+Phase 4
+Milestone 4.1 — Core Assistant Interaction
+```
+
+The frontend already contains Assistant scaffolding, so the next step is to
+inspect and complete the existing implementation rather than replace it.
 
 # 30. Immediate Next Query Targets
 
-Milestone 3.3 should eventually support questions conceptually similar to:
+Milestone 4.1 is primarily a frontend interaction milestone.
+
+The Assistant should successfully send questions such as:
+
+```text
+What's our bookkeeping summary?
+```
+
+```text
+Which transactions need AI review?
+```
 
 ```text
 Which transactions look unusual?
 ```
 
-```text
-Are there any unusually large expenses?
-```
+and render the backend response through a clear loading/error/result flow.
 
-```text
-Do any transactions look like duplicates?
-```
-
-```text
-Which accounting anomalies need attention?
-```
-
-Every anomaly should expose the deterministic rule and evidence that caused it
-to be flagged. An anomaly is an investigation signal, not accounting truth.
+The milestone should preserve the read-only accounting safety boundaries already
+implemented in the backend.
 
 # 31. Next Milestone Definition of Done
 
-Milestone 3.3 — Deterministic Anomaly Detection is complete when:
+Milestone 4.1 — Core Assistant Interaction is complete when:
 
-* at least one useful anomaly class is detected deterministically
-* anomaly detection operates only on read-only accounting data
-* every anomaly includes a clear reason and supporting evidence
-* thresholds and comparison rules are explicit and testable
-* normal transactions are not automatically treated as errors
-* anomaly results remain investigation signals rather than accounting truth
-* no categorization or reconciliation write is performed
-* a strict AI tool exposes anomaly results
-* generic AI tool execution boundaries remain intact
-* Demo Mode routing and formatting are deterministic
-* regression tests pass with a new verified baseline
+* the current Assistant frontend implementation has been inspected
+* question input works
+* submit behavior works
+* the Assistant endpoint is called successfully
+* loading state is visible and correct
+* API/network errors are readable to the user
+* successful responses are rendered clearly
+* existing dashboard/bookkeeping functionality is not regressed
+* no TypeScript errors remain
+* production frontend build passes
 * `PROJECT_STATUS.md` and `ROADMAP.md` are updated after verification
 
 ---

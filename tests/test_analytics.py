@@ -1472,6 +1472,7 @@ def test_ai_tool_registry():
     assert "get_revenue_analysis" in TOOL_REGISTRY
     assert "get_expense_trends" in TOOL_REGISTRY
     assert "get_financial_statistics" in TOOL_REGISTRY
+    assert "get_financial_anomalies" in TOOL_REGISTRY
 
     assert callable(TOOL_REGISTRY["get_bookkeeping_summary"])
     assert callable(TOOL_REGISTRY["get_ai_review_queue"])
@@ -1488,6 +1489,7 @@ def test_ai_tool_registry():
     assert callable(TOOL_REGISTRY["get_revenue_analysis"])
     assert callable(TOOL_REGISTRY["get_expense_trends"])
     assert callable(TOOL_REGISTRY["get_financial_statistics"])
+    assert callable(TOOL_REGISTRY["get_financial_anomalies"])
 
 
 def test_ai_tool_definitions():
@@ -1510,6 +1512,7 @@ def test_ai_tool_definitions():
         "get_revenue_analysis",
         "get_expense_trends",
         "get_financial_statistics",
+        "get_financial_anomalies",
         "get_transactions_by_date",
         "get_transactions",
     }
@@ -4600,3 +4603,250 @@ def test_demo_assistant_executes_reconciliation_investigation_generically(
     assert "No reconciliation state was changed" in (
         response.message
     )
+
+
+def test_financial_anomalies_read_only_contract(monkeypatch):
+    from datetime import datetime
+    import analytics
+
+    captured = {}
+    rows = [
+        (1, datetime(2026, 8, 1), "EXPENSE", "Annual software license", -300.0, "Software", "Microsoft", "MATCHED", "POSTED"),
+        (2, datetime(2026, 8, 2), "EXPENSE", "Printer paper", -50.0, "Office Supplies", "Office Depot", "MATCHED", "POSTED"),
+        (3, datetime(2026, 8, 2), "EXPENSE", "Printer paper", -50.0, "Office Supplies", "Office Depot", "MATCHED", "POSTED"),
+        (4, datetime(2026, 8, 4), "BANK_FEE", "Monthly bank fee", -10.0, "Bank Fees", None, "MATCHED", "POSTED"),
+        (5, datetime(2026, 9, 4), "BANK_FEE", "Monthly bank fee", -10.0, "Bank Fees", None, "MATCHED", "POSTED"),
+    ]
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+        def execute(self, sql, binds):
+            captured["sql"] = sql
+            captured["binds"] = binds
+        def fetchall(self):
+            return rows
+
+    class FakeConnection:
+        def __init__(self):
+            self.commit_called = False
+            self.closed = False
+        def cursor(self):
+            return FakeCursor()
+        def commit(self):
+            self.commit_called = True
+            raise AssertionError("Anomaly detection must not commit")
+        def close(self):
+            self.closed = True
+
+    connection = FakeConnection()
+    monkeypatch.setattr(analytics, "get_connection", lambda: connection)
+
+    result = analytics.get_financial_anomalies(
+        start_date="2026-08-01",
+        end_date="2026-09-30",
+    )
+
+    sql = " ".join(captured["sql"].split()).upper()
+    assert "FROM FINANCIAL_TRANSACTIONS" in sql
+    assert "TRANSACTION_TYPE IN ('EXPENSE', 'BANK_FEE')" in sql
+    assert "STATUS = 'POSTED'" in sql
+    assert "UPDATE " not in sql
+    assert "INSERT " not in sql
+    assert "DELETE " not in sql
+    assert captured["binds"] == {
+        "start_date": "2026-08-01",
+        "end_date": "2026-09-30",
+    }
+
+    assert result["baseline"]["posted_expense_count"] == 5
+    assert result["baseline"]["average_expense"] == 84.0
+    assert result["baseline"]["large_expense_threshold"] == 126.0
+    assert result["anomaly_count"] == 3
+
+    by_type = {item["anomaly_type"]: item for item in result["anomalies"]}
+    assert set(by_type) == {
+        "LARGE_EXPENSE",
+        "DUPLICATE_TRANSACTION",
+        "REPEATED_BANK_FEE",
+    }
+    assert by_type["LARGE_EXPENSE"]["transaction_ids"] == [1]
+    assert by_type["DUPLICATE_TRANSACTION"]["transaction_ids"] == [2, 3]
+    assert by_type["REPEATED_BANK_FEE"]["transaction_ids"] == [4, 5]
+    assert all(item["requires_human_review"] is True for item in result["anomalies"])
+    assert connection.commit_called is False
+    assert connection.closed is True
+
+
+def test_financial_anomalies_can_return_no_signals(monkeypatch):
+    from datetime import datetime
+    import analytics
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+        def execute(self, sql, binds):
+            pass
+        def fetchall(self):
+            return [
+                (1, datetime(2026, 8, 1), "EXPENSE", "Software subscription", -50.0, "Software", "Microsoft", "MATCHED", "POSTED"),
+                (2, datetime(2026, 8, 2), "EXPENSE", "Office supplies", -75.0, "Office Supplies", "Office Depot", "MATCHED", "POSTED"),
+            ]
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+        def close(self):
+            pass
+
+    monkeypatch.setattr(analytics, "get_connection", lambda: FakeConnection())
+    result = analytics.get_financial_anomalies()
+    assert result["anomaly_count"] == 0
+    assert result["anomalies"] == []
+    assert result["baseline"]["posted_expense_count"] == 2
+
+
+def test_financial_anomalies_need_baseline_for_large_expense(monkeypatch):
+    from datetime import datetime
+    import analytics
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+        def execute(self, sql, binds):
+            pass
+        def fetchall(self):
+            return [
+                (1, datetime(2026, 8, 1), "EXPENSE", "One-time purchase", -1000.0, "Office Supplies", "Vendor", "MATCHED", "POSTED"),
+            ]
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+        def close(self):
+            pass
+
+    monkeypatch.setattr(analytics, "get_connection", lambda: FakeConnection())
+    result = analytics.get_financial_anomalies()
+    large_expenses = [
+        item for item in result["anomalies"]
+        if item["anomaly_type"] == "LARGE_EXPENSE"
+    ]
+    assert large_expenses == []
+    assert result["rules"]["large_expense"]["minimum_baseline_count"] == 3
+
+
+def test_financial_anomalies_tool_schema():
+    from ai_tools import TOOL_DEFINITIONS, TOOL_REGISTRY
+
+    assert "get_financial_anomalies" in TOOL_REGISTRY
+    tool = next(
+        item for item in TOOL_DEFINITIONS
+        if item["name"] == "get_financial_anomalies"
+    )
+    assert tool["type"] == "function"
+    assert set(tool["parameters"]["properties"]) == {"start_date", "end_date"}
+    assert tool["parameters"]["required"] == ["start_date", "end_date"]
+    assert tool["parameters"]["additionalProperties"] is False
+
+
+def test_financial_anomalies_demo_routing():
+    from ai_assistant import _select_tools
+
+    examples = [
+        "Which transactions look unusual?",
+        "Which accounting anomalies need attention?",
+        "Are there any unusually large expenses?",
+        "Do any transactions look like duplicates?",
+        "Show me repeated bank fees that look suspicious.",
+    ]
+    for question in examples:
+        assert _select_tools(question) == ["get_financial_anomalies"]
+
+    assert _select_tools("What is our largest expense?") == [
+        "get_financial_statistics"
+    ]
+
+
+def test_financial_anomalies_formatter():
+    from ai_assistant import _format_financial_anomalies
+
+    result = {
+        "baseline": {
+            "posted_expense_count": 5,
+            "average_expense": 84.0,
+            "large_expense_threshold": 126.0,
+        },
+        "anomaly_count": 2,
+        "anomalies": [
+            {
+                "anomaly_type": "LARGE_EXPENSE",
+                "severity": "HIGH",
+                "transaction_ids": [1],
+                "reason": "Posted expense exceeds the threshold.",
+                "requires_human_review": True,
+            },
+            {
+                "anomaly_type": "DUPLICATE_TRANSACTION",
+                "severity": "MEDIUM",
+                "transaction_ids": [2, 3],
+                "reason": "Two exact duplicate-looking rows.",
+                "requires_human_review": True,
+            },
+        ],
+    }
+    message = _format_financial_anomalies(result)
+    assert "2 anomaly signal(s)" in message
+    assert "average €84.00" in message
+    assert "threshold €126.00" in message
+    assert "[HIGH] LARGE_EXPENSE" in message
+    assert "transaction(s) 1" in message
+    assert "[MEDIUM] DUPLICATE_TRANSACTION" in message
+    assert "transaction(s) 2, 3" in message
+    assert "not confirmed accounting errors" in message
+    assert "No accounting state was changed" in message
+
+
+def test_demo_assistant_executes_financial_anomalies_generically(monkeypatch):
+    import ai_assistant
+
+    calls = []
+
+    def fake_anomalies(**arguments):
+        calls.append(arguments)
+        return {
+            "baseline": {
+                "posted_expense_count": 3,
+                "average_expense": 100.0,
+                "large_expense_threshold": 150.0,
+            },
+            "anomaly_count": 1,
+            "anomalies": [
+                {
+                    "anomaly_type": "LARGE_EXPENSE",
+                    "severity": "MEDIUM",
+                    "transaction_ids": [7],
+                    "reason": "Expense exceeds threshold.",
+                    "requires_human_review": True,
+                }
+            ],
+        }
+
+    monkeypatch.setitem(
+        ai_assistant.TOOL_REGISTRY,
+        "get_financial_anomalies",
+        fake_anomalies,
+    )
+    response = ai_assistant.ask_assistant(
+        "Which transactions look unusual?"
+    )
+    assert response.tool_name == "get_financial_anomalies"
+    assert calls == [{"start_date": None, "end_date": None}]
+    assert "LARGE_EXPENSE" in response.message
+    assert "No accounting state was changed" in response.message

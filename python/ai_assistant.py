@@ -382,6 +382,14 @@ def _select_tools(question: str) -> list[str]:
         )
     )
 
+    wants_financial_anomalies = bool(
+        re.search(
+            r"\b(?:anomal(?:y|ies)|unusual(?:ly)?|suspicious|"
+            r"duplicate(?:s|d)?|repeated\s+bank\s+fees?)\b",
+            question_lower,
+        )
+    )
+
     has_reconciliation_investigation_language = bool(
         re.search(
             r"\b(?:why|investigate|investigation|explain|"
@@ -404,6 +412,7 @@ def _select_tools(question: str) -> list[str]:
         or wants_revenue_analysis
         or wants_expense_trends
         or wants_financial_statistics
+        or wants_financial_anomalies
     )
     has_reconciliation_transaction_context = (
         reconciliation_status is not None
@@ -456,6 +465,9 @@ def _select_tools(question: str) -> list[str]:
         or "recent activity" in question_lower
     ):
         tools.append("get_audit_log")
+
+    if wants_financial_anomalies:
+        tools.append("get_financial_anomalies")
 
     if wants_category_spending:
         tools.append("get_spending_by_category")
@@ -1079,6 +1091,9 @@ def _format_tool_result(
     if tool_name == "get_vendor_totals":
         return _format_vendor_totals(result)
 
+    if tool_name == "get_financial_anomalies":
+        return _format_financial_anomalies(result)
+
     if tool_name == "get_financial_statistics":
         return _format_financial_statistics(result)
 
@@ -1199,6 +1214,13 @@ def _get_demo_tool_arguments(
             "limit": _extract_top_limit(question),
         }
 
+    if tool_name == "get_financial_anomalies":
+        date_range = _extract_date_range(question)
+        return {
+            "start_date": date_range[0] if date_range else None,
+            "end_date": date_range[1] if date_range else None,
+        }
+
     if tool_name == "get_financial_statistics":
         date_range = _extract_date_range(question)
         return {
@@ -1225,6 +1247,55 @@ def _get_demo_tool_arguments(
         }
 
     return {}
+
+
+
+def _format_financial_anomalies(result: Any) -> str:
+    if not result:
+        return "No deterministic financial anomaly result is available."
+
+    anomalies = result.get("anomalies", [])
+    baseline = result.get("baseline", {})
+
+    if not anomalies:
+        return (
+            "No deterministic financial anomaly signals were detected in the "
+            "selected posted expense data. This does not prove that the "
+            "accounting data is error-free."
+        )
+
+    lines = [
+        f"Deterministic financial anomaly scan: {len(anomalies)} anomaly signal(s)."
+    ]
+
+    average_expense = baseline.get("average_expense")
+    threshold = baseline.get("large_expense_threshold")
+    if average_expense is not None:
+        lines.append(
+            f"Posted expense baseline: average €{float(average_expense):.2f}"
+            + (
+                f", large-expense threshold €{float(threshold):.2f}."
+                if threshold is not None
+                else "."
+            )
+        )
+
+    for anomaly in anomalies:
+        transaction_ids = ", ".join(
+            str(transaction_id)
+            for transaction_id in anomaly["transaction_ids"]
+        )
+        lines.append(
+            f"- [{anomaly['severity']}] {anomaly['anomaly_type']}: "
+            f"transaction(s) {transaction_ids}. {anomaly['reason']}"
+        )
+
+    lines.append(
+        "These are deterministic investigation signals, not confirmed "
+        "accounting errors. No accounting state was changed; human review "
+        "is required before taking action."
+    )
+    return "\n".join(lines)
 
 
 def _format_transactions(result: Any) -> str:

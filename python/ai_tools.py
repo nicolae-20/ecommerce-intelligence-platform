@@ -81,6 +81,7 @@ def tool_get_transactions_by_date(
 def tool_get_transactions(
     category: str | None = None,
     vendor: str | None = None,
+    transaction_type: str | None = None,
     min_amount: float | None = None,
     max_amount: float | None = None,
     status: str | None = None,
@@ -112,6 +113,10 @@ def tool_get_transactions(
                     OR LOWER(vendor) LIKE '%' || LOWER(:vendor) || '%'
                 )
                 AND (
+                    :transaction_type IS NULL
+                    OR transaction_type = :transaction_type
+                )
+                AND (
                     :min_amount IS NULL
                     OR ABS(amount) >= :min_amount
                 )
@@ -141,6 +146,7 @@ AND (
             """, {
                 "category": category,
                 "vendor": vendor,
+                "transaction_type": transaction_type,
                 "min_amount": min_amount,
                 "max_amount": max_amount,
                 "status": status,
@@ -266,8 +272,8 @@ TOOL_DEFINITIONS = [
     "name": "get_transactions",
     "description": (
         "Get financial transactions using optional filters "
-        "for accounting category, vendor, absolute transaction "
-        "amount, and transaction status."
+        "for accounting category, vendor, transaction type, "
+        "absolute transaction amount, and transaction status."
     ),
     "parameters": {
         "type": "object",
@@ -284,6 +290,13 @@ TOOL_DEFINITIONS = [
                 "description": (
                     "Vendor name or partial vendor name, such as "
                     "Microsoft or Amazon Web Services."
+                ),
+            },
+            "transaction_type": {
+                "type": ["string", "null"],
+                "enum": ["SALE", "EXPENSE", "BANK_FEE", None],
+                "description": (
+                    "Transaction type: SALE, EXPENSE, or BANK_FEE."
                 ),
             },
             "min_amount": {
@@ -316,6 +329,7 @@ TOOL_DEFINITIONS = [
         "required": [
             "category",
             "vendor",
+            "transaction_type",
             "min_amount",
             "max_amount",
             "status",

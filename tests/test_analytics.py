@@ -1451,6 +1451,7 @@ def test_ai_tool_definitions():
     assert transaction_tool["type"] == "function"
     assert "category" in transaction_tool["parameters"]["properties"]
     assert "vendor" in transaction_tool["parameters"]["properties"]
+    assert "transaction_type" in transaction_tool["parameters"]["properties"]
     assert "min_amount" in transaction_tool["parameters"]["properties"]
     assert "max_amount" in transaction_tool["parameters"]["properties"]
     assert "status" in transaction_tool["parameters"]["properties"]
@@ -1940,12 +1941,73 @@ def test_tool_get_transactions_filters_by_vendor():
         assert "microsoft" in transaction["vendor"].lower()
 
 
+def test_tool_get_transactions_filters_by_transaction_type():
+    from ai_tools import tool_get_transactions
+
+    result = tool_get_transactions(
+        transaction_type="EXPENSE",
+    )
+
+    assert result
+
+    for transaction in result:
+        assert transaction["transaction_type"] == "EXPENSE"
+
+
+def test_tool_get_transactions_binds_transaction_type_and_vendor(monkeypatch):
+    import ai_tools
+
+    captured = {}
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, statement, parameters):
+            captured["statement"] = statement
+            captured["parameters"] = parameters
+
+        def fetchall(self):
+            return []
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            captured["closed"] = True
+
+    monkeypatch.setattr(
+        ai_tools,
+        "get_connection",
+        lambda: FakeConnection(),
+    )
+
+    result = ai_tools.tool_get_transactions(
+        vendor="office depot",
+        transaction_type="EXPENSE",
+    )
+
+    assert result == []
+    assert ":vendor" in captured["statement"]
+    assert ":transaction_type" in captured["statement"]
+    assert "office depot" not in captured["statement"]
+    assert "EXPENSE" not in captured["statement"]
+    assert captured["parameters"]["vendor"] == "office depot"
+    assert captured["parameters"]["transaction_type"] == "EXPENSE"
+    assert captured["closed"] is True
+
+
 def test_tool_get_transactions_combines_vendor_with_existing_filters():
     from ai_tools import tool_get_transactions
 
     result = tool_get_transactions(
         category="Office Supplies",
         vendor="office depot",
+        transaction_type="EXPENSE",
         min_amount=80,
         max_amount=90,
         status="POSTED",
@@ -1958,6 +2020,7 @@ def test_tool_get_transactions_combines_vendor_with_existing_filters():
     for transaction in result:
         assert transaction["category"] == "Office Supplies"
         assert "office depot" in transaction["vendor"].lower()
+        assert transaction["transaction_type"] == "EXPENSE"
         assert 80 <= abs(float(transaction["amount"])) <= 90
         assert transaction["status"] == "POSTED"
 
@@ -1972,6 +2035,7 @@ def test_extract_transaction_filters():
     assert result == {
         "category": "Software",
         "vendor": None,
+        "transaction_type": "EXPENSE",
         "min_amount": 50.0,
         "max_amount": None,
         "status": None,
@@ -2000,6 +2064,20 @@ def test_extract_transaction_filters_with_vendor():
     )
 
     assert result["vendor"] == "Microsoft"
+
+
+def test_extract_transaction_filters_with_transaction_types():
+    from ai_assistant import _extract_transaction_filters
+
+    examples = {
+        "Show me sale transactions.": "SALE",
+        "Show me expense transactions.": "EXPENSE",
+        "Show me posted bank fees.": "BANK_FEE",
+    }
+
+    for question, expected_type in examples.items():
+        result = _extract_transaction_filters(question)
+        assert result["transaction_type"] == expected_type
 
 
 def test_demo_assistant_vendor_only_transactions():
@@ -2039,8 +2117,55 @@ def test_demo_assistant_combines_vendor_with_existing_filters():
     for transaction in transactions:
         assert transaction["vendor"] == "Office Depot"
         assert transaction["category"] == "Office Supplies"
+        assert transaction["transaction_type"] == "EXPENSE"
         assert abs(float(transaction["amount"])) >= 80
         assert transaction["status"] == "POSTED"
+
+
+def test_demo_assistant_filters_by_transaction_type(monkeypatch):
+    from ai_assistant import TOOL_REGISTRY, ask_assistant
+
+    captured = {}
+
+    def fake_get_transactions(**arguments):
+        captured.update(arguments)
+        return [
+            {
+                "transaction_id": 1,
+                "transaction_date": "2026-08-01",
+                "transaction_type": "BANK_FEE",
+                "description": "Monthly bank fee",
+                "amount": -10,
+                "category": "Bank Fees",
+                "vendor": None,
+                "ai_suggested_category": None,
+                "ai_confidence": None,
+                "reconciliation_status": "NO_MATCH",
+                "status": "POSTED",
+            }
+        ]
+
+    monkeypatch.setitem(
+        TOOL_REGISTRY,
+        "get_transactions",
+        fake_get_transactions,
+    )
+
+    response = ask_assistant(
+        "Show me posted bank fees."
+    )
+
+    assert response.tool_name == "get_transactions"
+    assert captured["transaction_type"] == "BANK_FEE"
+    assert captured["status"] == "POSTED"
+
+    transactions = response.tool_result[0]["result"]
+
+    assert transactions
+    assert all(
+        transaction["transaction_type"] == "BANK_FEE"
+        for transaction in transactions
+    )
 
 
 def test_demo_assistant_filtered_transactions():
@@ -2067,6 +2192,7 @@ def test_extract_transaction_filters_with_date_range():
     assert result == {
         "category": "Software",
         "vendor": None,
+        "transaction_type": "EXPENSE",
         "min_amount": 50.0,
         "max_amount": None,
         "status": None,

@@ -9,7 +9,7 @@ This document describes the current known implementation state.
 Snapshot baseline:
 
 ```text
-92 passed
+96 passed
 0 failed
 0 errors
 ```
@@ -611,12 +611,25 @@ Current known filter arguments:
 ```text
 category
 vendor
+transaction_type
 min_amount
 max_amount
 status
 start_date
 end_date
 ```
+
+Transaction type filtering supports the project values:
+
+```text
+SALE
+EXPENSE
+BANK_FEE
+```
+
+The filter is exposed through the existing AI tool schema and uses an Oracle
+bind parameter. The tool remains registered through `TOOL_REGISTRY` and is
+executed through the unchanged generic `_execute_tool()` path.
 
 Amount comparisons use transaction magnitude through `ABS(amount)` where implemented.
 
@@ -669,6 +682,7 @@ Current known parsed fields:
 ```text
 category
 vendor
+transaction_type
 min_amount
 max_amount
 status
@@ -692,6 +706,12 @@ Known vendors recognized deterministically include:
 * Amazon Web Services
 * Microsoft
 * Office Depot
+
+Known transaction types recognized deterministically include:
+
+* SALE
+* EXPENSE
+* BANK_FEE
 
 Vendor matching in the SQL tool is case-insensitive and supports partial names.
 
@@ -761,7 +781,7 @@ tests/test_api.py
 Current known baseline:
 
 ```text
-92 passed
+96 passed
 ```
 
 Current automated regression command:
@@ -920,7 +940,6 @@ Still needs expansion beyond current filters.
 
 Planned additions include:
 
-* transaction_type
 * reconciliation_status
 * categorized / uncategorized
 * AI confidence filtering
@@ -979,11 +998,11 @@ The next planned backend milestone is:
 
 ```text
 Phase 1
-Milestone 1.2 — Transaction Type Filtering
+Milestone 1.3 — Reconciliation Status Filtering
 ```
 
-Extend `get_transactions` and deterministic Demo Mode parsing with a
-`transaction_type` filter using the actual database values.
+Extend transaction querying and deterministic Demo Mode parsing with a
+reconciliation-status filter using the actual database values.
 
 Primary files likely involved:
 
@@ -1002,15 +1021,11 @@ Potential API changes are not expected unless implementation inspection shows th
 After the next milestone, Demo Mode should be able to support queries conceptually similar to:
 
 ```text
-Show me expense transactions.
+Show me unmatched Software transactions.
 ```
 
 ```text
-Show me posted bank fee transactions.
-```
-
-```text
-Show me posted Microsoft expense transactions.
+Show me unmatched Microsoft expenses.
 ```
 
 The exact parser behavior should be deterministic and covered by tests.
@@ -1021,14 +1036,11 @@ The exact parser behavior should be deterministic and covered by tests.
 
 The immediate milestone is complete when:
 
-* `tool_get_transactions()` accepts `transaction_type`
-* Oracle SQL uses bind parameters
-* `TOOL_DEFINITIONS` exposes `transaction_type`
-* Demo Mode extracts supported transaction types
-* transaction type composes with category/vendor/status filters
-* existing transaction filter behavior remains correct
-* new tests are added
-* full pytest suite passes
+* a reconciliation-status filter exists
+* actual database status values are validated
+* Demo Mode supports relevant reconciliation vocabulary
+* reconciliation status composes with existing transaction filters
+* regression tests pass
 * this file is updated with the new baseline
 * the corresponding roadmap milestone is marked complete
 

@@ -11,7 +11,6 @@ KNOWN_VENDORS = (
     "Office Depot",
 )
 
-
 @dataclass
 class AssistantResponse:
     message: str
@@ -25,6 +24,24 @@ def _extract_known_vendor(question: str) -> str | None:
     for vendor in KNOWN_VENDORS:
         if vendor.lower() in question_lower:
             return vendor
+
+    return None
+
+
+def _extract_transaction_type(question: str) -> str | None:
+    question_lower = question.lower()
+
+    if re.search(r"\bbank fees?\b", question_lower):
+        return "BANK_FEE"
+
+    if re.search(r"\bexpenses?\b", question_lower):
+        return "EXPENSE"
+
+    if (
+        re.search(r"\bsales?\b", question_lower)
+        and "sales revenue" not in question_lower
+    ):
+        return "SALE"
 
     return None
 
@@ -107,6 +124,7 @@ def _select_tools(question: str) -> list[str]:
         or "pending transactions" in question_lower
         or "posted transactions" in question_lower
         or _extract_known_vendor(question) is not None
+        or _extract_transaction_type(question) is not None
     )
 
     has_date_range_request = (
@@ -163,6 +181,7 @@ def _extract_transaction_filters(
     filters: dict[str, Any] = {
     "category": None,
     "vendor": None,
+    "transaction_type": None,
     "min_amount": None,
     "max_amount": None,
     "status": None,
@@ -187,6 +206,7 @@ def _extract_transaction_filters(
             break
 
     filters["vendor"] = _extract_known_vendor(question)
+    filters["transaction_type"] = _extract_transaction_type(question)
 
     min_match = re.search(
         r"(?:over|above|more than|at least)\s*€?\s*(\d+(?:\.\d+)?)",

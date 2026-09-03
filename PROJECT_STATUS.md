@@ -1047,80 +1047,94 @@ Not yet complete.
 
 # 29. Immediate Next Milestone
 
-Milestone 3.1 — Uncategorized Transaction Investigation is complete.
+Milestone 3.2 — Reconciliation Investigation is complete.
 
 The current verified backend baseline is:
 
 ```text
-146 passed
+154 passed
 0 failed
 0 errors
 ```
 
-Milestone 3.1 added a read-only investigation path that:
+Milestone 3.2 added a dedicated read-only reconciliation investigation path
+that:
 
-* retrieves one financial transaction by ID
-* distinguishes uncategorized, categorized, and missing transactions
-* retrieves active accounting categories and confirmed historical examples
-* uses the existing accounting RAG context
-* generates a read-only category recommendation
-* validates that recommendation against the active Chart of Accounts
-* distinguishes stored AI suggestions from approved accounting truth
-* requires human review before final categorization
-* performs no category approval, accounting write, or commit
+* retrieves one bank transaction by ID
+* retrieves its linked financial transaction candidate where available
+* exposes stored match type and confidence
+* calculates deterministic amount differences
+* identifies exact amount matches
+* calculates date differences
+* calculates deterministic meaningful-token description overlap
+* distinguishes possible matches, no-match results, already matched items, and missing items
+* produces an explainable reconciliation assessment
+* requires human review for unresolved reconciliation decisions
+* performs no reconciliation mutation or commit
+
+The specific investigation tool is:
+
+```text
+investigate_reconciliation_issue
+```
+
+The existing `get_reconciliation_review` tool remains the bulk review/listing
+path.
 
 The next planned backend milestone is:
 
 ```text
 Phase 3
-Milestone 3.2 — Reconciliation Investigation
+Milestone 3.3 — Deterministic Anomaly Detection
 ```
 
-The goal is to explain reconciliation problems using read-only evidence rather
-than silently changing reconciliation state.
+The goal is to identify potentially important accounting anomalies through
+deterministic and explainable read-only rules.
 
-The investigation should be able to reason over:
+Initial anomaly candidates include:
 
-* bank transaction amount
-* transaction date
-* descriptions
-* vendor or memo context where available
-* possible linked financial transaction
-* match type
-* match confidence
-* why an item remains unmatched
-
-Human review remains the authority for important reconciliation decisions.
+* unusually large posted expenses
+* duplicate-looking transactions
+* repeated bank fees
+* new or unexpected vendors
+* category spending spikes
+* repeated or suspicious amount patterns
 
 # 30. Immediate Next Query Targets
 
-Milestone 3.2 should support investigation questions conceptually similar to:
+Milestone 3.3 should eventually support questions conceptually similar to:
 
 ```text
-Why is bank transaction 10 unmatched?
+Which transactions look unusual?
 ```
 
 ```text
-What evidence supports the possible match for bank transaction 10?
+Are there any unusually large expenses?
 ```
 
 ```text
-Which reconciliation issues need attention?
+Do any transactions look like duplicates?
 ```
 
-The Assistant should explain observable evidence and uncertainty without
-representing a possible match as a finalized reconciliation result.
+```text
+Which accounting anomalies need attention?
+```
+
+Every anomaly should expose the deterministic rule and evidence that caused it
+to be flagged. An anomaly is an investigation signal, not accounting truth.
 
 # 31. Next Milestone Definition of Done
 
-Milestone 3.2 — Reconciliation Investigation is complete when:
+Milestone 3.3 — Deterministic Anomaly Detection is complete when:
 
-* one reconciliation issue can be investigated through the read-only tool layer
-* bank-transaction and linked financial-transaction evidence is exposed clearly
-* amount, date, description, match type, and confidence are used where available
-* deterministic reasons explain why an item is unmatched or uncertain
-* possible matches remain explicitly human-reviewable
-* investigation does not silently finalize or mutate reconciliation state
+* at least one useful anomaly class is detected deterministically
+* anomaly detection operates only on read-only accounting data
+* every anomaly includes a clear reason and supporting evidence
+* thresholds and comparison rules are explicit and testable
+* normal transactions are not automatically treated as errors
+* anomaly results remain investigation signals rather than accounting truth
+* no categorization or reconciliation write is performed
+* a strict AI tool exposes anomaly results
 * generic AI tool execution boundaries remain intact
 * Demo Mode routing and formatting are deterministic
 * regression tests pass with a new verified baseline

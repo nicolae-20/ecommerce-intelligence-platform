@@ -1465,6 +1465,7 @@ def test_ai_tool_registry():
     assert "get_ai_review_queue" in TOOL_REGISTRY
     assert "investigate_uncategorized_transaction" in TOOL_REGISTRY
     assert "get_reconciliation_review" in TOOL_REGISTRY
+    assert "investigate_reconciliation_issue" in TOOL_REGISTRY
     assert "get_audit_log" in TOOL_REGISTRY
     assert "get_spending_by_category" in TOOL_REGISTRY
     assert "get_vendor_totals" in TOOL_REGISTRY
@@ -1478,6 +1479,9 @@ def test_ai_tool_registry():
         TOOL_REGISTRY["investigate_uncategorized_transaction"]
     )
     assert callable(TOOL_REGISTRY["get_reconciliation_review"])
+    assert callable(
+        TOOL_REGISTRY["investigate_reconciliation_issue"]
+    )
     assert callable(TOOL_REGISTRY["get_audit_log"])
     assert callable(TOOL_REGISTRY["get_spending_by_category"])
     assert callable(TOOL_REGISTRY["get_vendor_totals"])
@@ -1499,6 +1503,7 @@ def test_ai_tool_definitions():
         "get_ai_review_queue",
         "investigate_uncategorized_transaction",
         "get_reconciliation_review",
+        "investigate_reconciliation_issue",
         "get_audit_log",
         "get_spending_by_category",
         "get_vendor_totals",
@@ -4156,3 +4161,442 @@ def test_demo_assistant_executes_uncategorized_investigation_generically(
         }
     ]
     assert "Read-only recommendation: Software" in response.message
+
+
+def test_reconciliation_investigation_read_only_contract(monkeypatch):
+    from datetime import datetime
+
+    import analytics
+
+    captured = {}
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, sql, binds):
+            captured["sql"] = sql
+            captured["binds"] = binds
+
+        def fetchone(self):
+            return (
+                10,
+                datetime(2026, 8, 15),
+                "AWS payment",
+                -129.0,
+                "UNMATCHED",
+                1,
+                "POSSIBLE_MATCH",
+                0.84,
+                None,
+                datetime(2026, 8, 13),
+                "AWS monthly payment",
+                -129.0,
+                "Amazon Web Services",
+                "Software",
+                "EXPENSE",
+                "POSTED",
+                "UNMATCHED",
+            )
+
+    class FakeConnection:
+        def __init__(self):
+            self.closed = False
+            self.commit_called = False
+
+        def cursor(self):
+            return FakeCursor()
+
+        def commit(self):
+            self.commit_called = True
+            raise AssertionError(
+                "Read-only investigation must not commit"
+            )
+
+        def close(self):
+            self.closed = True
+
+    connection = FakeConnection()
+
+    monkeypatch.setattr(
+        analytics,
+        "get_connection",
+        lambda: connection,
+    )
+
+    result = analytics.investigate_reconciliation_issue(
+        bank_transaction_id=10,
+    )
+
+    sql = " ".join(captured["sql"].split()).upper()
+
+    assert "FROM BANK_TRANSACTIONS BT" in sql
+    assert "LEFT JOIN FINANCIAL_TRANSACTIONS FT" in sql
+    assert (
+        "WHERE BT.BANK_TRANSACTION_ID = :BANK_TRANSACTION_ID"
+        in sql
+    )
+    assert "UPDATE " not in sql
+    assert "INSERT " not in sql
+    assert "DELETE " not in sql
+
+    assert captured["binds"] == {
+        "bank_transaction_id": 10,
+    }
+
+    assert result["bank_transaction"][
+        "bank_transaction_id"
+    ] == 10
+    assert result["candidate_match"]["transaction_id"] == 1
+    assert result["match"]["match_type"] == "POSSIBLE_MATCH"
+    assert result["match"]["match_confidence"] == 0.84
+
+    assert result["evidence"]["amount_difference"] == 0.0
+    assert result["evidence"]["amount_matches"] is True
+    assert result["evidence"]["date_difference_days"] == 2
+    assert result["evidence"][
+        "description_token_overlap"
+    ] == 1.0
+
+    assert result["assessment"]["code"] == (
+        "POSSIBLE_MATCH_REVIEW"
+    )
+    assert result["requires_human_review"] is True
+    assert connection.commit_called is False
+    assert connection.closed is True
+
+
+def test_reconciliation_investigation_handles_no_match(
+    monkeypatch,
+):
+    from datetime import datetime
+
+    import analytics
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, sql, binds):
+            pass
+
+        def fetchone(self):
+            return (
+                3,
+                datetime(2026, 8, 20),
+                "Unknown withdrawal",
+                -75.0,
+                "UNMATCHED",
+                None,
+                "NO_MATCH",
+                0,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        analytics,
+        "get_connection",
+        lambda: FakeConnection(),
+    )
+
+    result = analytics.investigate_reconciliation_issue(
+        bank_transaction_id=3,
+    )
+
+    assert result["candidate_match"] is None
+    assert result["assessment"]["code"] == "NO_MATCH_FOUND"
+    assert result["requires_human_review"] is True
+    assert "no linked financial transaction" in (
+        result["assessment"]["explanation"].lower()
+    )
+
+
+def test_reconciliation_investigation_handles_matched_item(
+    monkeypatch,
+):
+    from datetime import datetime
+
+    import analytics
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, sql, binds):
+            pass
+
+        def fetchone(self):
+            return (
+                4,
+                datetime(2026, 8, 20),
+                "Supplier payment",
+                -200.0,
+                "MATCHED",
+                5,
+                "POSSIBLE_MATCH",
+                0.90,
+                None,
+                datetime(2026, 8, 20),
+                "Supplier payment",
+                -200.0,
+                "Supplier",
+                "Office Supplies",
+                "EXPENSE",
+                "POSTED",
+                "MATCHED",
+            )
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        analytics,
+        "get_connection",
+        lambda: FakeConnection(),
+    )
+
+    result = analytics.investigate_reconciliation_issue(
+        bank_transaction_id=4,
+    )
+
+    assert result["assessment"]["code"] == "ALREADY_MATCHED"
+    assert result["requires_human_review"] is False
+
+
+def test_reconciliation_investigation_handles_missing_item(
+    monkeypatch,
+):
+    import analytics
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, sql, binds):
+            pass
+
+        def fetchone(self):
+            return None
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        analytics,
+        "get_connection",
+        lambda: FakeConnection(),
+    )
+
+    assert (
+        analytics.investigate_reconciliation_issue(
+            bank_transaction_id=999999,
+        )
+        is None
+    )
+
+
+def test_reconciliation_investigation_tool_schema():
+    from ai_tools import TOOL_DEFINITIONS, TOOL_REGISTRY
+
+    assert "investigate_reconciliation_issue" in TOOL_REGISTRY
+
+    tool = next(
+        item
+        for item in TOOL_DEFINITIONS
+        if item["name"] == "investigate_reconciliation_issue"
+    )
+
+    assert tool["type"] == "function"
+    assert set(tool["parameters"]["properties"]) == {
+        "bank_transaction_id",
+    }
+    assert tool["parameters"]["required"] == [
+        "bank_transaction_id",
+    ]
+    assert tool["parameters"]["properties"][
+        "bank_transaction_id"
+    ]["minimum"] == 1
+    assert tool["parameters"]["additionalProperties"] is False
+
+
+def test_reconciliation_investigation_demo_routing():
+    from ai_assistant import _select_tools
+
+    assert _select_tools(
+        "Why is bank transaction 10 unmatched?"
+    ) == [
+        "investigate_reconciliation_issue"
+    ]
+
+    assert _select_tools(
+        "What evidence supports the possible match "
+        "for bank transaction 10?"
+    ) == [
+        "investigate_reconciliation_issue"
+    ]
+
+    assert _select_tools(
+        "Investigate bank transaction 10."
+    ) == [
+        "investigate_reconciliation_issue"
+    ]
+
+    # Bulk review remains on the existing queue tool.
+    assert _select_tools(
+        "Which reconciliation issues need attention?"
+    ) == [
+        "get_reconciliation_review"
+    ]
+
+
+def test_reconciliation_investigation_formatter():
+    from ai_assistant import _format_reconciliation_investigation
+
+    result = {
+        "bank_transaction": {
+            "bank_transaction_id": 10,
+            "transaction_date": "2026-08-15",
+            "description": "AWS payment",
+            "amount": -129,
+            "status": "UNMATCHED",
+            "stored_investigation_status": None,
+        },
+        "candidate_match": {
+            "transaction_id": 1,
+            "transaction_date": "2026-08-13",
+            "description": "AWS monthly payment",
+            "amount": -129,
+            "vendor": "Amazon Web Services",
+            "category": "Software",
+            "transaction_type": "EXPENSE",
+            "status": "POSTED",
+            "reconciliation_status": "UNMATCHED",
+        },
+        "match": {
+            "match_type": "POSSIBLE_MATCH",
+            "match_confidence": 0.84,
+        },
+        "evidence": {
+            "amount_difference": 0.0,
+            "amount_matches": True,
+            "date_difference_days": 2,
+            "description_token_overlap": 0.5,
+        },
+        "assessment": {
+            "code": "POSSIBLE_MATCH_REVIEW",
+            "explanation": (
+                "The evidence supports a possible match, "
+                "but it is not finalized."
+            ),
+        },
+        "requires_human_review": True,
+    }
+
+    message = _format_reconciliation_investigation(result)
+
+    assert "bank transaction 10" in message
+    assert "€-129.00" in message
+    assert "POSSIBLE_MATCH" in message
+    assert "84%" in message
+    assert "candidate transaction 1" in message
+    assert "amount difference €0.00" in message
+    assert "date difference 2 day(s)" in message
+    assert "description token overlap 50%" in message
+    assert "No reconciliation state was changed" in message
+    assert "Human review is required" in message
+
+
+def test_demo_assistant_executes_reconciliation_investigation_generically(
+    monkeypatch,
+):
+    import ai_assistant
+
+    calls = []
+
+    def fake_investigation(**arguments):
+        calls.append(arguments)
+
+        return {
+            "bank_transaction": {
+                "bank_transaction_id": 10,
+                "description": "AWS payment",
+                "amount": -129,
+                "status": "UNMATCHED",
+                "stored_investigation_status": None,
+            },
+            "candidate_match": None,
+            "match": {
+                "match_type": "NO_MATCH",
+                "match_confidence": 0,
+            },
+            "evidence": {
+                "amount_difference": None,
+                "amount_matches": None,
+                "date_difference_days": None,
+                "description_token_overlap": None,
+            },
+            "assessment": {
+                "code": "NO_MATCH_FOUND",
+                "explanation": (
+                    "No linked financial transaction candidate exists."
+                ),
+            },
+            "requires_human_review": True,
+        }
+
+    monkeypatch.setitem(
+        ai_assistant.TOOL_REGISTRY,
+        "investigate_reconciliation_issue",
+        fake_investigation,
+    )
+
+    response = ai_assistant.ask_assistant(
+        "Why is bank transaction 10 unmatched?"
+    )
+
+    assert response.tool_name == (
+        "investigate_reconciliation_issue"
+    )
+    assert calls == [
+        {
+            "bank_transaction_id": 10,
+        }
+    ]
+    assert "No reconciliation state was changed" in (
+        response.message
+    )

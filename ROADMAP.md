@@ -660,26 +660,63 @@ truth.
 
 ## Milestone 3.2 — Reconciliation Investigation
 
-Questions:
+Implemented workflow:
 
 ```text
-Why is this transaction unmatched?
+identify reconciliation issue
+        ↓
+retrieve bank transaction
+        ↓
+inspect linked candidate
+        ↓
+compare deterministic evidence
+        ↓
+explain uncertainty
+        ↓
+human decides
 ```
 
-```text
-Which reconciliation issues need attention?
-```
+The implementation introduces the read-only
+`investigate_reconciliation_issue` AI tool.
 
-Agent/tooling may compare:
+The investigation result includes:
 
-* amounts
-* dates
-* descriptions
-* vendors
-* possible matches
-* confidence
+* bank transaction details
+* linked financial-transaction candidate where available
+* stored match type
+* stored match confidence
+* absolute amount difference
+* exact amount-match indicator
+* date difference in days
+* deterministic meaningful-token description overlap
+* deterministic reconciliation assessment
+* explicit human-review requirement
 
-Do not silently finalize reconciliation.
+The existing bulk `get_reconciliation_review` tool remains responsible for
+listing reconciliation issues. Specific bank-transaction drill-down routes
+through `investigate_reconciliation_issue`.
+
+The investigation path is deliberately separate from the existing write
+functions that confirm, reject, or mark reconciliation items investigated.
+
+### Definition of Done
+
+* [x] one reconciliation issue can be investigated by bank transaction ID
+* [x] bank and linked financial transaction evidence is retrieved read-only
+* [x] Oracle bind parameters are used for the transaction lookup
+* [x] amount difference and exact amount matching are deterministic
+* [x] date difference is calculated where both dates are available
+* [x] description overlap is calculated deterministically
+* [x] possible-match confidence is exposed without treating it as truth
+* [x] `POSSIBLE_MATCH`, `NO_MATCH`, matched, and missing-item behavior is deterministic
+* [x] specific investigation requests use a dedicated AI tool
+* [x] bulk reconciliation review remains on `get_reconciliation_review`
+* [x] AI tool registry and strict schema integration are complete
+* [x] Demo Mode routes through generic `_execute_tool()`
+* [x] investigation performs no reconciliation `UPDATE`, `INSERT`, or `DELETE`
+* [x] investigation performs no database commit
+* [x] possible matches remain human-reviewable
+* [x] tests pass — 154 passed
 
 ---
 
@@ -1389,25 +1426,35 @@ Start with:
 
 ```text
 Phase 3
-Milestone 3.2 — Reconciliation Investigation
+Milestone 3.3 — Deterministic Anomaly Detection
 ```
 
 Goal:
 
-Use the read-only investigation layer to explain why a bank transaction is
-unmatched and which reconciliation issues deserve human attention.
+Add a small read-only anomaly layer that identifies accounting transactions
+worthy of investigation using deterministic, explainable rules before adding
+any agentic interpretation.
+
+Initial anomaly candidates:
+
+* unusually large posted expenses
+* duplicate-looking transactions
+* repeated bank fees
+* new or unexpected vendors
+* category spending spikes
+* suspicious repeated amount patterns
 
 Before implementation:
 
-1. inspect `get_reconciliation_review_queue()` and the current bank-match data contract
-2. inspect the existing `get_reconciliation_review` AI tool and Assistant routing
-3. inspect bank transaction amount, date, description, vendor/memo, match type, and confidence fields
-4. inspect the linked `financial_transactions` evidence already returned by reconciliation queries
-5. define the smallest useful read-only reconciliation-investigation contract
-6. distinguish confirmed matches, possible matches, and no-match evidence
-7. do not call write paths that finalize, reject, or otherwise mutate reconciliation state
-8. preserve generic `_execute_tool()` as the AI execution boundary
-9. run or confirm the current `146 passed` baseline
+1. inspect the current transaction-query and financial-analytics helpers
+2. choose the smallest high-value anomaly set for the first implementation
+3. define deterministic thresholds and evidence for every anomaly type
+4. prefer reusable SQL/data helpers rather than duplicating analytics logic
+5. ensure every anomaly includes a reason and observable evidence
+6. keep anomaly detection fully read-only
+7. do not let anomaly detection approve, categorize, reconcile, or otherwise mutate accounting state
+8. expose the result through a strict read-only AI tool
+9. preserve generic `_execute_tool()` as the execution boundary
+10. run or confirm the current `154 passed` baseline
 
-Complete and test Milestone 3.2 before moving to deterministic anomaly
-detection.
+Complete and test Milestone 3.3 before moving to the next portfolio phase.

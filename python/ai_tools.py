@@ -6,6 +6,7 @@ from analytics import (
     get_expense_trends,
     get_financial_statistics,
     get_reconciliation_review_queue,
+    investigate_reconciliation_issue,
     get_revenue_analysis,
     get_spending_by_category,
     get_vendor_totals,
@@ -26,6 +27,14 @@ def tool_investigate_uncategorized_transaction(
 ):
     return investigate_uncategorized_transaction(
         transaction_id=transaction_id,
+    )
+
+
+def tool_investigate_reconciliation_issue(
+    bank_transaction_id: int,
+):
+    return investigate_reconciliation_issue(
+        bank_transaction_id=bank_transaction_id,
     )
 
 
@@ -283,6 +292,7 @@ TOOL_REGISTRY = {
     "get_ai_review_queue": tool_get_ai_review_queue,
     "investigate_uncategorized_transaction": tool_investigate_uncategorized_transaction,
     "get_reconciliation_review": tool_get_reconciliation_review,
+    "investigate_reconciliation_issue": tool_investigate_reconciliation_issue,
     "get_audit_log": tool_get_audit_log,
     "get_spending_by_category": tool_get_spending_by_category,
     "get_vendor_totals": tool_get_vendor_totals,
@@ -360,6 +370,31 @@ TOOL_DEFINITIONS = [
             "type": "object",
             "properties": {},
             "required": [],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "investigate_reconciliation_issue",
+        "description": (
+            "Investigate one bank reconciliation issue using read-only "
+            "evidence. Return the bank transaction, any linked financial "
+            "transaction candidate, match metadata, deterministic evidence, "
+            "and whether human review is still required. This tool never "
+            "confirms, rejects, or marks a reconciliation item investigated."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "bank_transaction_id": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": (
+                        "Bank transaction ID to investigate."
+                    ),
+                },
+            },
+            "required": ["bank_transaction_id"],
             "additionalProperties": False,
         },
     },

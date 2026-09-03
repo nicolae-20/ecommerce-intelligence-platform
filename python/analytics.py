@@ -1180,6 +1180,235 @@ def get_reconciliation_review_queue():
         connection.close()
 
 
+def investigate_reconciliation_issue(bank_transaction_id):
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    bt.bank_transaction_id,
+                    bt.transaction_date,
+                    bt.description,
+                    bt.amount,
+                    bt.status,
+                    bt.financial_transaction_id,
+                    bt.match_type,
+                    bt.match_confidence,
+                    bt.investigation_status,
+                    ft.transaction_date,
+                    ft.description,
+                    ft.amount,
+                    ft.vendor,
+                    ft.category,
+                    ft.transaction_type,
+                    ft.status,
+                    ft.reconciliation_status
+                FROM bank_transactions bt
+                LEFT JOIN financial_transactions ft
+                    ON ft.transaction_id = bt.financial_transaction_id
+                WHERE bt.bank_transaction_id = :bank_transaction_id
+            """, {
+                "bank_transaction_id": bank_transaction_id,
+            })
+
+            row = cursor.fetchone()
+    finally:
+        connection.close()
+
+    if row is None:
+        return None
+
+    bank_transaction = {
+        "bank_transaction_id": row[0],
+        "transaction_date": row[1],
+        "description": row[2],
+        "amount": row[3],
+        "status": row[4],
+        "stored_investigation_status": row[8],
+    }
+
+    candidate_match = None
+
+    if row[5] is not None:
+        candidate_match = {
+            "transaction_id": row[5],
+            "transaction_date": row[9],
+            "description": row[10],
+            "amount": row[11],
+            "vendor": row[12],
+            "category": row[13],
+            "transaction_type": row[14],
+            "status": row[15],
+            "reconciliation_status": row[16],
+        }
+
+    amount_difference = None
+    amount_matches = None
+    date_difference_days = None
+    description_token_overlap = None
+
+    if candidate_match is not None:
+        if row[3] is not None and row[11] is not None:
+            amount_difference = round(
+                abs(float(row[3]) - float(row[11])),
+                2,
+            )
+            amount_matches = amount_difference <= 0.01
+
+        if row[1] is not None and row[9] is not None:
+            date_difference_days = abs(
+                (row[1] - row[9]).days
+            )
+
+        def meaningful_tokens(value):
+            if not value:
+                return set()
+
+            tokens = set()
+
+            for raw_token in str(value).lower().split():
+                token = raw_token.strip(
+                    ".,-/()[]{}:;!?\\\"\'"
+                )
+
+                if len(token) >= 3:
+                    tokens.add(token)
+
+            return tokens
+
+        bank_tokens = meaningful_tokens(row[2])
+        candidate_tokens = meaningful_tokens(row[10])
+
+        if bank_tokens and candidate_tokens:
+            shared_tokens = bank_tokens & candidate_tokens
+
+            description_token_overlap = round(
+                len(shared_tokens)
+                / min(
+                    len(bank_tokens),
+                    len(candidate_tokens),
+                ),
+                2,
+            )
+        else:
+            description_token_overlap = 0.0
+
+    match_type = row[6]
+    match_confidence = row[7]
+
+    if row[4] == "MATCHED":
+        assessment_code = "ALREADY_MATCHED"
+        requires_human_review = False
+        explanation = (
+            "This bank transaction is already marked MATCHED. "
+            "There is no unresolved reconciliation issue to finalize."
+        )
+
+    elif match_type == "POSSIBLE_MATCH":
+        assessment_code = "POSSIBLE_MATCH_REVIEW"
+        requires_human_review = True
+
+        if candidate_match is None:
+            explanation = (
+                "The bank transaction is marked POSSIBLE_MATCH, "
+                "but no linked financial transaction is currently "
+                "available. Human review is required."
+            )
+        else:
+            evidence_parts = []
+
+            if amount_matches is True:
+                evidence_parts.append(
+                    "The bank and candidate amounts match exactly."
+                )
+            elif amount_difference is not None:
+                evidence_parts.append(
+                    f"The amounts differ by "
+                    f"{amount_difference:.2f}."
+                )
+
+            if date_difference_days is not None:
+                evidence_parts.append(
+                    f"The transaction dates are "
+                    f"{date_difference_days} day(s) apart."
+                )
+
+            if description_token_overlap is not None:
+                evidence_parts.append(
+                    f"Exact meaningful-token description overlap "
+                    f"is {description_token_overlap:.0%}."
+                )
+
+            if match_confidence is not None:
+                evidence_parts.append(
+                    f"Stored reconciliation confidence is "
+                    f"{float(match_confidence):.0%}."
+                )
+            else:
+                evidence_parts.append(
+                    "No reconciliation confidence score is stored."
+                )
+
+            evidence_parts.append(
+                "POSSIBLE_MATCH is not a finalized reconciliation "
+                "decision, so human review is still required."
+            )
+
+            explanation = " ".join(evidence_parts)
+
+    elif match_type == "NO_MATCH":
+        assessment_code = "NO_MATCH_FOUND"
+        requires_human_review = True
+
+        if candidate_match is None:
+            explanation = (
+                "The reconciliation result is NO_MATCH and there is "
+                "no linked financial transaction candidate. The item "
+                "remains unmatched and requires human review."
+            )
+        else:
+            explanation = (
+                "The reconciliation result is NO_MATCH even though "
+                "a linked financial transaction is present. The "
+                "conflicting evidence should be reviewed by a human."
+            )
+
+    else:
+        assessment_code = "UNRESOLVED"
+        requires_human_review = row[4] != "MATCHED"
+
+        explanation = (
+            f"The bank transaction has status "
+            f"{row[4] or 'UNKNOWN'} and match type "
+            f"{match_type or 'NONE'}. "
+            f"No finalized reconciliation conclusion can be "
+            f"derived from the stored evidence."
+        )
+
+    return {
+        "bank_transaction": bank_transaction,
+        "candidate_match": candidate_match,
+        "match": {
+            "match_type": match_type,
+            "match_confidence": match_confidence,
+        },
+        "evidence": {
+            "amount_difference": amount_difference,
+            "amount_matches": amount_matches,
+            "date_difference_days": date_difference_days,
+            "description_token_overlap": (
+                description_token_overlap
+            ),
+        },
+        "assessment": {
+            "code": assessment_code,
+            "explanation": explanation,
+        },
+        "requires_human_review": requires_human_review,
+    }
+
+
 def reject_bank_transaction_match(bank_transaction_id):
     connection = get_connection()
 

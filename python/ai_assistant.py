@@ -76,6 +76,19 @@ def _extract_top_limit(question: str, default: int = 10) -> int:
     return min(max(int(match.group(1)), 1), 100)
 
 
+def _extract_bank_transaction_id(question: str) -> int | None:
+    match = re.search(
+        r"\bbank\s+transaction(?:\s+id)?\s*#?\s*(\d+)\b",
+        question,
+        re.IGNORECASE,
+    )
+
+    if match is None:
+        return None
+
+    return int(match.group(1))
+
+
 def _extract_transaction_id(question: str) -> int | None:
     match = re.search(
         r"\btransaction(?:\s+id)?\s*#?\s*(\d+)\b",
@@ -246,6 +259,7 @@ def _select_tools(question: str) -> list[str]:
     )
     min_amount, max_amount = _extract_amount_filters(question)
     transaction_id = _extract_transaction_id(question)
+    bank_transaction_id = _extract_bank_transaction_id(question)
 
     has_spending_language = bool(
         re.search(r"\b(?:spend|spent|spending)\b", question_lower)
@@ -368,6 +382,22 @@ def _select_tools(question: str) -> list[str]:
         )
     )
 
+    has_reconciliation_investigation_language = bool(
+        re.search(
+            r"\b(?:why|investigate|investigation|explain|"
+            r"evidence|possible match|match confidence)\b",
+            question_lower,
+        )
+    )
+
+    wants_reconciliation_investigation = (
+        bank_transaction_id is not None
+        and (
+            has_reconciliation_investigation_language
+            or "unmatched" in question_lower
+        )
+    )
+
     has_financial_analytics_request = (
         wants_category_spending
         or wants_vendor_spending
@@ -404,15 +434,21 @@ def _select_tools(question: str) -> list[str]:
         tools.append("get_ai_review_queue")
 
     if (
-        "reconciliation" in question_lower
-        or "bank match" in question_lower
-        or "bank matches" in question_lower
-        or (
-            "unmatched" in question_lower
-            and not has_reconciliation_transaction_context
+        not wants_reconciliation_investigation
+        and (
+            "reconciliation" in question_lower
+            or "bank match" in question_lower
+            or "bank matches" in question_lower
+            or (
+                "unmatched" in question_lower
+                and not has_reconciliation_transaction_context
+            )
         )
     ):
         tools.append("get_reconciliation_review")
+
+    if wants_reconciliation_investigation:
+        tools.append("investigate_reconciliation_issue")
 
     if (
         "audit log" in question_lower
@@ -470,6 +506,7 @@ def _select_tools(question: str) -> list[str]:
     if not (
         has_financial_analytics_request
         or wants_uncategorized_investigation
+        or wants_reconciliation_investigation
     ):
         if has_transaction_filters or has_relative_date_request:
             tools.append("get_transactions")
@@ -762,6 +799,97 @@ def _format_uncategorized_investigation(result: Any) -> str:
     )
 
 
+def _format_reconciliation_investigation(result: Any) -> str:
+    if not result:
+        return "No bank transaction was found for that ID."
+
+    bank = result["bank_transaction"]
+    candidate = result.get("candidate_match")
+    match = result["match"]
+    evidence = result["evidence"]
+    assessment = result["assessment"]
+
+    amount = float(bank["amount"])
+
+    lines = [
+        (
+            f"Reconciliation investigation for bank transaction "
+            f"{bank['bank_transaction_id']}: "
+            f"{bank['description'] or 'No description'}, "
+            f"amount €{amount:.2f}, "
+            f"status {bank['status']}."
+        ),
+        (
+            f"Stored match type: "
+            f"{match['match_type'] or 'None'}; "
+            f"confidence: "
+            + (
+                f"{float(match['match_confidence']) * 100:.0f}%."
+                if match["match_confidence"] is not None
+                else "N/A."
+            )
+        ),
+    ]
+
+    if candidate is not None:
+        candidate_amount = float(candidate["amount"])
+
+        lines.append(
+            f"Linked candidate transaction "
+            f"{candidate['transaction_id']}: "
+            f"{candidate['description'] or 'No description'}, "
+            f"amount €{candidate_amount:.2f}, "
+            f"vendor {candidate['vendor'] or 'No vendor'}."
+        )
+
+        amount_difference = evidence["amount_difference"]
+        date_difference = evidence["date_difference_days"]
+        overlap = evidence["description_token_overlap"]
+
+        lines.append(
+            "Evidence: "
+            + (
+                f"amount difference €"
+                f"{float(amount_difference):.2f}, "
+                if amount_difference is not None
+                else "amount difference unavailable, "
+            )
+            + (
+                f"date difference {date_difference} day(s), "
+                if date_difference is not None
+                else "date difference unavailable, "
+            )
+            + (
+                f"description token overlap "
+                f"{float(overlap) * 100:.0f}%."
+                if overlap is not None
+                else "description token overlap unavailable."
+            )
+        )
+    else:
+        lines.append(
+            "No linked financial transaction candidate is stored."
+        )
+
+    lines.append(
+        f"Assessment: {assessment['explanation']}"
+    )
+
+    if result["requires_human_review"]:
+        lines.append(
+            "No reconciliation state was changed. "
+            "Human review is required before any final "
+            "reconciliation decision."
+        )
+    else:
+        lines.append(
+            "No reconciliation state was changed. "
+            "This item does not currently require unresolved-match review."
+        )
+
+    return "\n".join(lines)
+
+
 def _format_reconciliation_review(result: Any) -> str:
     if not result:
         return "There are no reconciliation items requiring review."
@@ -930,6 +1058,9 @@ def _format_tool_result(
     if tool_name == "investigate_uncategorized_transaction":
         return _format_uncategorized_investigation(result)
 
+    if tool_name == "investigate_reconciliation_issue":
+        return _format_reconciliation_investigation(result)
+
     if tool_name == "get_reconciliation_review":
         return _format_reconciliation_review(result)
 
@@ -1006,6 +1137,20 @@ def _get_demo_tool_arguments(
     tool_name: str,
     question: str,
 ) -> dict[str, Any]:
+    if tool_name == "investigate_reconciliation_issue":
+        bank_transaction_id = _extract_bank_transaction_id(
+            question
+        )
+
+        if bank_transaction_id is None:
+            raise ValueError(
+                "Please provide a bank transaction ID."
+            )
+
+        return {
+            "bank_transaction_id": bank_transaction_id,
+        }
+
     if tool_name == "investigate_uncategorized_transaction":
         transaction_id = _extract_transaction_id(question)
 

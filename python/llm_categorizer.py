@@ -1,4 +1,5 @@
 import json
+import math
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -45,10 +46,37 @@ def _parse_category_response(response: Any) -> CategorySuggestion:
         confidence=float(data["confidence"]),
     )
 
+def validate_suggestion_confidence(
+    suggestion: CategorySuggestion,
+) -> CategorySuggestion:
+    try:
+        confidence = float(suggestion.confidence)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "Invalid AI confidence: expected a finite number "
+            "between 0 and 1."
+        ) from exc
+
+    if (
+        not math.isfinite(confidence)
+        or confidence < 0.0
+        or confidence > 1.0
+    ):
+        raise ValueError(
+            "Invalid AI confidence: expected a finite number "
+            "between 0 and 1."
+        )
+
+    suggestion.confidence = confidence
+    return suggestion
+
+
 def validate_category_suggestion(
     suggestion: CategorySuggestion,
     context: AccountingContext,
 ) -> CategorySuggestion:
+    validate_suggestion_confidence(suggestion)
+
     valid_categories = {
         category["account_name"]
         for category in context.categories
@@ -61,6 +89,21 @@ def validate_category_suggestion(
         )
 
     return suggestion
+
+
+def _validate_suggestion_for_context(
+    suggestion: CategorySuggestion,
+    context: AccountingContext | None,
+) -> CategorySuggestion:
+    if context is None:
+        return validate_suggestion_confidence(
+            suggestion
+        )
+
+    return validate_category_suggestion(
+        suggestion,
+        context,
+    )
 
 def _demo_category_suggestion(
     description: str | None,
@@ -165,13 +208,10 @@ Do not invent categories.
 
         suggestion = _parse_category_response(response)
 
-        if context is not None:
-            validate_category_suggestion(
-        suggestion,
-        context,
-    )
-
-        return suggestion
+        return _validate_suggestion_for_context(
+            suggestion=suggestion,
+            context=context,
+        )
 
     mode = os.getenv(
         "AI_CATEGORIZATION_MODE",
@@ -179,10 +219,15 @@ Do not invent categories.
     ).lower()
 
     if mode == "demo":
-        return _demo_category_suggestion(
+        suggestion = _demo_category_suggestion(
             description=description,
             vendor=vendor,
             amount=amount,
+        )
+
+        return _validate_suggestion_for_context(
+            suggestion=suggestion,
+            context=context,
         )
 
     if mode == "openai":
@@ -213,13 +258,10 @@ Do not invent categories.
 
         suggestion = _parse_category_response(response)
 
-        if context is not None:
-            validate_category_suggestion(
-        suggestion,
-        context,
-    )
-
-        return suggestion
+        return _validate_suggestion_for_context(
+            suggestion=suggestion,
+            context=context,
+        )
 
     raise ValueError(
         "AI_CATEGORIZATION_MODE must be 'demo' or 'openai'"

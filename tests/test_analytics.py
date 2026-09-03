@@ -5361,3 +5361,161 @@ def test_uncategorized_investigation_formatter_explains_rag_evidence():
     assert "Office Supplies" in message
     assert "Software" in message
     assert "human review and approval" in message
+
+def test_phase6_1_confidence_validation_accepts_bounds():
+    from llm_categorizer import (
+        CategorySuggestion,
+        validate_suggestion_confidence,
+    )
+
+    for confidence in (0.0, 1.0):
+        suggestion = CategorySuggestion(
+            category="Software",
+            confidence=confidence,
+        )
+
+        result = validate_suggestion_confidence(
+            suggestion
+        )
+
+        assert result.confidence == confidence
+
+
+def test_phase6_1_confidence_validation_rejects_invalid_values():
+    import pytest
+
+    from llm_categorizer import (
+        CategorySuggestion,
+        validate_suggestion_confidence,
+    )
+
+    invalid_values = (
+        -0.01,
+        1.01,
+        float("nan"),
+        float("inf"),
+        float("-inf"),
+    )
+
+    for confidence in invalid_values:
+        suggestion = CategorySuggestion(
+            category="Software",
+            confidence=confidence,
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="Invalid AI confidence",
+        ):
+            validate_suggestion_confidence(
+                suggestion
+            )
+
+
+def test_phase6_1_demo_mode_preserves_valid_category(
+    monkeypatch,
+):
+    from accounting_rag import AccountingContext
+    from llm_categorizer import (
+        suggest_transaction_category,
+    )
+
+    monkeypatch.setenv(
+        "AI_CATEGORIZATION_MODE",
+        "demo",
+    )
+
+    context = AccountingContext(
+        categories=[
+            {
+                "category_id": 3,
+                "account_code": "6100",
+                "account_name": "Software",
+                "account_type": "EXPENSE",
+            }
+        ],
+        examples=[],
+    )
+
+    suggestion = suggest_transaction_category(
+        description="Microsoft 365 subscription",
+        vendor="Microsoft",
+        amount=-120.0,
+        context=context,
+    )
+
+    assert suggestion.category == "Software"
+    assert suggestion.confidence == 0.95
+    assert suggestion.high_confidence is True
+
+
+def test_phase6_1_demo_mode_validates_category_against_context(
+    monkeypatch,
+):
+    import pytest
+
+    from accounting_rag import AccountingContext
+    from llm_categorizer import (
+        suggest_transaction_category,
+    )
+
+    monkeypatch.setenv(
+        "AI_CATEGORIZATION_MODE",
+        "demo",
+    )
+
+    context = AccountingContext(
+        categories=[
+            {
+                "category_id": 3,
+                "account_code": "6100",
+                "account_name": "Software",
+                "account_type": "EXPENSE",
+            }
+        ],
+        examples=[],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Invalid accounting category returned by AI",
+    ):
+        suggest_transaction_category(
+            description="Office supplies",
+            vendor="Office Depot",
+            amount=-25.0,
+            context=context,
+        )
+
+
+def test_phase6_1_client_response_validates_confidence_without_context():
+    import pytest
+
+    from llm_categorizer import (
+        suggest_transaction_category,
+    )
+
+    class MockResponse:
+        output_text = (
+            '{"category": "Software", '
+            '"confidence": 1.25}'
+        )
+
+    class MockResponses:
+        def create(self, **kwargs):
+            return MockResponse()
+
+    class MockClient:
+        def __init__(self):
+            self.responses = MockResponses()
+
+    with pytest.raises(
+        ValueError,
+        match="Invalid AI confidence",
+    ):
+        suggest_transaction_category(
+            description="AWS monthly service",
+            vendor="Amazon Web Services",
+            amount=-129.0,
+            client=MockClient(),
+        )

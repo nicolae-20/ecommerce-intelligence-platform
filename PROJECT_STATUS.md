@@ -1047,43 +1047,87 @@ Not yet complete.
 
 # 29. Immediate Next Milestone
 
-Milestone 5.3 — RAG Evidence Quality and Explainability is complete.
+Milestone 6.1 — Unified Categorization Validation and Confidence
+Contract is complete.
 
 Verified backend regression baseline:
 
 ```text
-170 passed
+175 passed
 0 failed
 0 errors
 ```
 
-Phase 5 is now complete.
+Targeted Phase 6.1 validation:
 
-Completed RAG milestones:
+```text
+5 passed
+```
 
-* 5.1 Deterministic RAG Example Ranking
-* 5.2 Trusted Historical Evidence
-* 5.3 RAG Evidence Quality and Explainability
+The categorization validation boundary now guarantees:
 
-The RAG system now provides:
+* confidence is numeric
+* confidence is finite
+* confidence is between 0 and 1 inclusive
+* Demo Mode suggestions are validated against the Chart of Accounts when
+  accounting context is available
+* client/OpenAI suggestions and Demo Mode share a common final validation
+  path
+* suggestions without context still receive confidence validation
 
-* deterministic example ranking
-* trusted final-category historical evidence
-* bounded retrieval
-* deduplication
-* relevance scores
-* explicit match reasons
-* mixed-category conflict detection
-* human-readable investigation evidence
-* clear separation between retrieval relevance and AI confidence
+Existing accounting safety remains intact:
 
-The accounting safety model remains unchanged:
+* `ai_suggested_category` remains advisory
+* `ai_confidence` remains advisory
+* AI suggestions do not become final accounting truth automatically
+* final categorization continues to require human approval or manual
+  assignment
+* trusted RAG history remains based on final accounting assignments
 
-* stored AI suggestions are not accounting truth
-* human-approved or manually assigned final categories are trusted history
-* RAG retrieval is read-only
-* investigation recommendations are read-only
-* consequential accounting categorization still requires human approval
+# 30. Immediate Next Query Targets
+
+Prepare Milestone 6.2 by evaluating deterministic categorization quality.
+
+Inspect concrete cases for:
+
+* `SALE`
+* `EXPENSE`
+* `BANK_FEE`
+* positive versus negative amounts
+* known software vendors
+* office-supply descriptions
+* advertising expenses
+* utilities
+* travel
+* unknown vendors and descriptions
+* conflicting trusted historical examples
+
+Determine which signals should affect:
+
+1. predicted category
+2. AI confidence
+3. human-review urgency
+
+Do not use RAG retrieval score as AI confidence.
+
+# 31. Next Milestone Definition of Done
+
+Milestone 6.2 should be defined from explicit categorization evaluation
+cases before modifying the rules.
+
+Any implementation must preserve:
+
+* confidence range validation from 6.1
+* Chart of Accounts validation
+* deterministic Demo Mode
+* trusted final-category RAG history
+* retrieval-score / confidence separation
+* human approval for final categorization
+* no required paid API usage
+* targeted categorization-quality tests
+* full backend regression
+
+---
 
 # 30. Immediate Next Query Targets
 

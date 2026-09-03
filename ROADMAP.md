@@ -1768,42 +1768,87 @@ full regression:
 
 ---
 
+## Milestone 6.1 — Unified Categorization Validation and Confidence Contract
+
+Completed the common validation boundary for accounting category
+suggestions.
+
+Implemented:
+
+* AI confidence must be a finite numeric value between 0 and 1
+* invalid negative confidence is rejected
+* confidence above 1 is rejected
+* NaN and infinite confidence values are rejected
+* Demo Mode now uses the same Chart of Accounts validation boundary
+* client-provided and OpenAI suggestions use the same final validation path
+* confidence validation also applies when no accounting context is supplied
+* existing Demo Mode category predictions and confidence values are preserved
+* invalid suggestions fail before accounting suggestion state is written
+* no autonomous final categorization behavior was introduced
+* human approval remains required for final accounting categorization
+
+Validation:
+
+```text
+targeted:
+5 passed
+
+full regression:
+175 passed
+0 failed
+0 errors
+```
+
+### Definition of Done
+
+* [x] confidence contract is enforced in code
+* [x] confidence must be finite and bounded to 0..1
+* [x] Demo Mode uses Chart of Accounts validation when context is available
+* [x] client/OpenAI and Demo Mode share the validation boundary
+* [x] invalid suggestions cannot silently reach the persistence path
+* [x] existing high-confidence threshold behavior remains unchanged
+* [x] no paid API usage is required
+* [x] human-controlled final accounting decisions are preserved
+* [x] targeted tests pass
+* [x] full backend regression passes with 175 tests
+
+---
+
 # CURRENT NEXT ACTION
 
-Phase 5 RAG Improvements is complete.
+Continue Phase 6 — AI Categorization Quality.
 
 Completed:
 
 ```text
-5.1 Deterministic RAG Example Ranking
-5.2 Trusted Historical Evidence
-5.3 RAG Evidence Quality and Explainability
+6.1 Unified Categorization Validation and Confidence Contract
 ```
 
-Continue with:
+Next candidate milestone:
 
 ```text
-Phase 6 — AI Categorization Quality
+6.2 Deterministic Demo Categorization Quality
 ```
 
-Phase 6 should improve recommendation quality without weakening the
-accounting safety boundary established in Phases 3 and 5.
+Before implementing 6.2, inspect and define evaluation cases for:
 
-Initial Phase 6 investigation should inspect:
+* transaction type signals
+* amount-sign behavior
+* vendor-specific versus description-specific evidence
+* ambiguous descriptions
+* mixed historical RAG categories
+* whether mixed evidence should reduce AI confidence
+* fallback behavior for unknown transactions
+* whether confidence calibration should remain deterministic in Demo Mode
 
-* deterministic Demo Mode categorization rules
-* AI confidence behavior
-* category validation behavior
-* transaction type and amount signals available to categorization
-* historical evidence conflict handling
-* whether confidence should be reduced when RAG evidence is mixed
-* evaluation cases for known vendors and ambiguous descriptions
+Do not change final accounting autonomy.
 
 Preserve:
 
-* final accounting decisions remain human-controlled
-* AI suggestions remain advisory until approved
-* RAG historical examples remain trusted final assignments
-* investigation tools remain read-only
-* retrieval score remains distinct from AI confidence
-* no paid API is required for core development
+* Chart of Accounts validation
+* confidence range validation
+* trusted RAG history
+* retrieval-score / AI-confidence separation
+* human approval for final categorization
+* Demo Mode as the default development path
+* no required paid OpenAI usage

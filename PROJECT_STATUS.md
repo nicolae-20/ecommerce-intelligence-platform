@@ -1013,13 +1013,17 @@ The following should not be represented as finished.
 
 ## Financial analytics AI tools
 
-Dedicated aggregation tools such as:
+Dedicated SQL-backed financial analytics are now implemented for:
 
-* monthly revenue
-* monthly expenses
-* financial trends
+* spending by category
+* vendor spending
+* revenue analysis
+* expense trends
 
-are still roadmap work.
+These analytics use `financial_transactions` as the accounting source of truth
+and execute through the existing read-only AI tool architecture.
+
+Milestone 2.5 — Financial Statistics remains future work.
 
 ## AI Assistant frontend
 
@@ -1061,50 +1065,67 @@ The next planned backend milestone is:
 
 ```text
 Phase 2
-Milestone 2.3 — Revenue Analysis
+Milestone 2.5 — Financial Statistics
 ```
 
-Add read-only total, date-range, period, and monthly revenue analytics through
-the existing AI tool architecture.
+Add a deliberately small set of deterministic, decision-useful financial
+statistics using `financial_transactions` as the accounting source of truth.
 
-Primary files likely involved:
+Candidate metrics include:
+
+* transaction count
+* average expense
+* largest expense
+* posted vs pending counts
+* categorized vs uncategorized counts
+
+Median or overlapping dashboard statistics should be added only if they
+materially improve the financial investigation workflow.
+
+The current verified backend baseline is:
 
 ```text
-python/ai_tools.py
-python/ai_assistant.py
-tests/test_analytics.py
+132 passed
+0 failed
+0 errors
 ```
-
-Potential API changes are not expected unless implementation inspection shows they are needed.
-
----
 
 # 30. Immediate Next Query Targets
 
-After the next milestone, Demo Mode should be able to support queries conceptually similar to:
+After Milestone 2.5, Demo Mode should support deterministic financial-statistics
+questions conceptually similar to:
 
 ```text
-How much revenue did we make in August?
+What is our average expense?
 ```
 
 ```text
-Show monthly revenue.
+What is our largest expense?
 ```
 
-The exact parser behavior should be deterministic and covered by tests.
+```text
+How many transactions are posted versus pending?
+```
 
----
+```text
+How many transactions are categorized versus uncategorized?
+```
+
+The implementation should add only statistics that improve later financial
+investigation workflows.
 
 # 31. Next Milestone Definition of Done
 
-The immediate milestone is complete when:
+Milestone 2.5 ? Financial Statistics is complete when:
 
-* Oracle revenue aggregation uses the accounting source of truth
-* the tool registry and schema are updated
-* deterministic Demo Mode routing and formatting are supported where useful
-* regression tests pass
-* this file is updated with the new baseline
-* the corresponding roadmap milestone is marked complete
+* only decision-useful statistics are added
+* `financial_transactions` remains the accounting source of truth
+* calculations are deterministic and read-only
+* SQL filters use Oracle bind parameters where applicable
+* AI tool registry and schema integration are complete where useful
+* Demo Mode routing and formatting are deterministic
+* regression tests pass with a new verified baseline
+* `PROJECT_STATUS.md` and `ROADMAP.md` are updated after verification
 
 ---
 
@@ -1121,6 +1142,7 @@ ROADMAP.md
 Then inspect:
 
 ```text
+python/analytics.py
 python/ai_tools.py
 python/ai_assistant.py
 tests/test_analytics.py

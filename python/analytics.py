@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from database import get_connection
 from llm_categorizer import (
     is_high_confidence_suggestion,
@@ -415,6 +417,226 @@ def get_vendor_totals(
                 }
                 for row in cursor.fetchall()
             ]
+    finally:
+        connection.close()
+
+
+_FINANCIAL_PERIOD_SQL = {
+    "month": (
+        "TRUNC(transaction_date, 'MM')",
+        "YYYY-MM",
+    ),
+    "year": (
+        "TRUNC(transaction_date, 'YYYY')",
+        "YYYY",
+    ),
+}
+
+
+def _get_financial_period_sql(period):
+    normalized_period = period.lower()
+
+    if normalized_period not in _FINANCIAL_PERIOD_SQL:
+        raise ValueError("period must be 'month' or 'year'")
+
+    period_expression, period_format = _FINANCIAL_PERIOD_SQL[normalized_period]
+    return normalized_period, period_expression, period_format
+
+
+def _fill_financial_period_gaps(rows, period):
+    if not rows:
+        return []
+
+    rows_by_period = {row[0]: row for row in rows}
+    current_period = rows[0][0]
+    final_period = rows[-1][0]
+    complete_rows = []
+
+    while current_period <= final_period:
+        complete_rows.append(
+            rows_by_period.get(current_period, (current_period, 0, 0))
+        )
+
+        if period == "month":
+            current_date = datetime.strptime(current_period, "%Y-%m")
+            next_year = current_date.year + (current_date.month == 12)
+            next_month = 1 if current_date.month == 12 else current_date.month + 1
+            current_period = f"{next_year:04d}-{next_month:02d}"
+        else:
+            current_period = str(int(current_period) + 1)
+
+    return complete_rows
+
+
+def get_revenue_analysis(
+    start_date=None,
+    end_date=None,
+    period="month",
+):
+    normalized_period, period_expression, period_format = (
+        _get_financial_period_sql(period)
+    )
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"""
+                SELECT
+                    TO_CHAR({period_expression}, '{period_format}') AS period,
+                    ROUND(SUM(amount), 2) AS total_revenue,
+                    COUNT(*) AS transaction_count
+                FROM financial_transactions
+                WHERE transaction_type = 'SALE'
+                AND status = 'POSTED'
+                AND (
+                    :start_date IS NULL
+                    OR transaction_date >= TO_TIMESTAMP(
+                        :start_date,
+                        'YYYY-MM-DD'
+                    )
+                )
+                AND (
+                    :end_date IS NULL
+                    OR transaction_date < TO_TIMESTAMP(
+                        :end_date,
+                        'YYYY-MM-DD'
+                    ) + INTERVAL '1' DAY
+                )
+                GROUP BY {period_expression}
+                ORDER BY {period_expression}
+            """, {
+                "start_date": start_date,
+                "end_date": end_date,
+            })
+
+            rows = _fill_financial_period_gaps(
+                cursor.fetchall(),
+                normalized_period,
+            )
+            periods = [
+                {
+                    "period": row[0],
+                    "total_revenue": row[1],
+                    "transaction_count": row[2],
+                }
+                for row in rows
+            ]
+
+            return {
+                "period": normalized_period,
+                "total_revenue": round(
+                    sum((item["total_revenue"] or 0) for item in periods),
+                    2,
+                ),
+                "transaction_count": sum(
+                    item["transaction_count"] for item in periods
+                ),
+                "periods": periods,
+            }
+    finally:
+        connection.close()
+
+
+def get_expense_trends(
+    category=None,
+    vendor=None,
+    start_date=None,
+    end_date=None,
+    period="month",
+):
+    normalized_period, period_expression, period_format = (
+        _get_financial_period_sql(period)
+    )
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"""
+                SELECT
+                    TO_CHAR({period_expression}, '{period_format}') AS period,
+                    ROUND(SUM(ABS(amount)), 2) AS total_expenses,
+                    COUNT(*) AS transaction_count
+                FROM financial_transactions
+                WHERE transaction_type IN ('EXPENSE', 'BANK_FEE')
+                AND status = 'POSTED'
+                AND (
+                    :category IS NULL
+                    OR category = :category
+                )
+                AND (
+                    :vendor IS NULL
+                    OR LOWER(vendor) LIKE '%' || LOWER(:vendor) || '%'
+                )
+                AND (
+                    :start_date IS NULL
+                    OR transaction_date >= TO_TIMESTAMP(
+                        :start_date,
+                        'YYYY-MM-DD'
+                    )
+                )
+                AND (
+                    :end_date IS NULL
+                    OR transaction_date < TO_TIMESTAMP(
+                        :end_date,
+                        'YYYY-MM-DD'
+                    ) + INTERVAL '1' DAY
+                )
+                GROUP BY {period_expression}
+                ORDER BY {period_expression}
+            """, {
+                "category": category,
+                "vendor": vendor,
+                "start_date": start_date,
+                "end_date": end_date,
+            })
+
+            periods = []
+            previous_total = None
+
+            rows = _fill_financial_period_gaps(
+                cursor.fetchall(),
+                normalized_period,
+            )
+
+            for row in rows:
+                total_expenses = row[1]
+                change_amount = None
+                change_percentage = None
+
+                if previous_total is not None:
+                    change_amount = round(
+                        total_expenses - previous_total,
+                        2,
+                    )
+
+                    if previous_total != 0:
+                        change_percentage = round(
+                            (change_amount / previous_total) * 100,
+                            2,
+                        )
+
+                periods.append({
+                    "period": row[0],
+                    "total_expenses": total_expenses,
+                    "transaction_count": row[2],
+                    "change_amount": change_amount,
+                    "change_percentage": change_percentage,
+                })
+                previous_total = total_expenses
+
+            return {
+                "period": normalized_period,
+                "category": category,
+                "vendor": vendor,
+                "total_expenses": round(
+                    sum((item["total_expenses"] or 0) for item in periods),
+                    2,
+                ),
+                "transaction_count": sum(
+                    item["transaction_count"] for item in periods
+                ),
+                "periods": periods,
+            }
     finally:
         connection.close()
 

@@ -521,6 +521,19 @@ How much revenue did we make in August?
 Show monthly revenue.
 ```
 
+### Definition of Done
+
+* [x] `financial_transactions` is the accounting source of truth
+* [x] revenue uses posted `SALE` transactions
+* [x] total and period-based revenue are deterministic
+* [x] named months and inclusive date ranges are supported
+* [x] period SQL is selected from a closed allow-list
+* [x] date values use Oracle bind parameters
+* [x] AI tool registry/schema integration is complete
+* [x] Demo Mode routes through generic `_execute_tool()`
+* [x] empty-result behavior is deterministic
+* [x] tests pass — 132 passed
+
 ---
 
 ## Milestone 2.4 — Expense Trends
@@ -535,6 +548,20 @@ Support:
 Do calculations deterministically.
 
 AI should explain the results, not invent them.
+
+### Definition of Done
+
+* [x] `financial_transactions` is the accounting source of truth
+* [x] expenses use posted `EXPENSE` and `BANK_FEE` transactions
+* [x] existing expense sign semantics are preserved
+* [x] monthly and yearly trend grouping is deterministic
+* [x] category and vendor trend filters are supported
+* [x] date/filter values use Oracle bind parameters
+* [x] missing calendar months are represented as zero-value gaps before month-over-month comparison
+* [x] first-period and zero-period behavior is deterministic
+* [x] AI tool registry/schema integration is complete
+* [x] Demo Mode routes through generic `_execute_tool()`
+* [x] tests pass — 132 passed
 
 ---
 
@@ -1312,18 +1339,17 @@ Start with:
 
 ```text
 Phase 2
-Milestone 2.3 — Revenue Analysis
+Milestone 2.5 — Financial Statistics
 ```
 
 Before implementation:
 
-1. inspect the existing revenue and AI tool architecture
-2. inspect `python/ai_tools.py` and `python/ai_assistant.py`
-3. inspect relevant tests in `tests/test_analytics.py`
-4. verify revenue source, sign, status, and period semantics
-5. run or confirm the current test baseline
-6. implement revenue analytics incrementally
+1. inspect the existing bookkeeping and financial analytics functions
+2. inspect the current AI tool registry and Assistant routing
+3. select only statistics that improve financial decision-making or later investigation workflows
+4. keep `financial_transactions` as the accounting source of truth
+5. preserve deterministic calculations and Oracle bind safety
+6. run or confirm the current `132 passed` baseline
 
-Do not continue automatically into several later milestones in one large change unless explicitly requested.
-
-Complete and test one milestone at a time.
+Keep Milestone 2.5 deliberately small. Do not add metrics simply to increase the
+number of analytics exposed.

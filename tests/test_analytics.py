@@ -15,8 +15,10 @@ from analytics import (
     get_bookkeeping_categories,
     get_bookkeeping_summary,
     get_customer_metrics,
+    get_expense_trends,
     get_financial_summary,
     get_monthly_revenue,
+    get_revenue_analysis,
     get_spending_by_category,
     get_top_customers,
     get_transactions_requiring_review,
@@ -66,6 +68,32 @@ def test_vendor_totals():
     assert all(item["vendor"] is not None for item in totals)
     assert all(float(item["total_spending"]) >= 0 for item in totals)
     assert all(item["transaction_count"] > 0 for item in totals)
+
+
+def test_revenue_analysis():
+    analysis = get_revenue_analysis(period="month")
+
+    assert analysis["period"] == "month"
+    assert float(analysis["total_revenue"]) >= 0
+    assert analysis["transaction_count"] >= 0
+    assert all(item["period"] for item in analysis["periods"])
+    assert all(
+        float(item["total_revenue"]) >= 0
+        for item in analysis["periods"]
+    )
+
+
+def test_expense_trends():
+    trends = get_expense_trends(period="month")
+
+    assert trends["period"] == "month"
+    assert float(trends["total_expenses"]) >= 0
+    assert trends["transaction_count"] >= 0
+    assert all(item["period"] for item in trends["periods"])
+    assert all(
+        float(item["total_expenses"]) >= 0
+        for item in trends["periods"]
+    )
 
 
 def test_customer_metrics():
@@ -1439,6 +1467,8 @@ def test_ai_tool_registry():
     assert "get_audit_log" in TOOL_REGISTRY
     assert "get_spending_by_category" in TOOL_REGISTRY
     assert "get_vendor_totals" in TOOL_REGISTRY
+    assert "get_revenue_analysis" in TOOL_REGISTRY
+    assert "get_expense_trends" in TOOL_REGISTRY
 
     assert callable(TOOL_REGISTRY["get_bookkeeping_summary"])
     assert callable(TOOL_REGISTRY["get_ai_review_queue"])
@@ -1446,6 +1476,8 @@ def test_ai_tool_registry():
     assert callable(TOOL_REGISTRY["get_audit_log"])
     assert callable(TOOL_REGISTRY["get_spending_by_category"])
     assert callable(TOOL_REGISTRY["get_vendor_totals"])
+    assert callable(TOOL_REGISTRY["get_revenue_analysis"])
+    assert callable(TOOL_REGISTRY["get_expense_trends"])
 
 
 def test_ai_tool_definitions():
@@ -1463,6 +1495,8 @@ def test_ai_tool_definitions():
         "get_audit_log",
         "get_spending_by_category",
         "get_vendor_totals",
+        "get_revenue_analysis",
+        "get_expense_trends",
         "get_transactions_by_date",
         "get_transactions",
     }
@@ -1530,6 +1564,38 @@ def test_ai_tool_definitions():
         "end_date",
         "limit",
     }
+
+    revenue_tool = next(
+        tool
+        for tool in TOOL_DEFINITIONS
+        if tool["name"] == "get_revenue_analysis"
+    )
+    assert set(revenue_tool["parameters"]["properties"]) == {
+        "start_date",
+        "end_date",
+        "period",
+    }
+    assert revenue_tool["parameters"]["properties"]["period"]["enum"] == [
+        "month",
+        "year",
+    ]
+
+    expense_trends_tool = next(
+        tool
+        for tool in TOOL_DEFINITIONS
+        if tool["name"] == "get_expense_trends"
+    )
+    assert set(expense_trends_tool["parameters"]["properties"]) == {
+        "category",
+        "vendor",
+        "start_date",
+        "end_date",
+        "period",
+    }
+    assert expense_trends_tool["parameters"]["properties"]["period"]["enum"] == [
+        "month",
+        "year",
+    ]
 
     for tool in TOOL_DEFINITIONS:
         assert tool["type"] == "function"
@@ -1935,7 +2001,7 @@ def test_extract_date_range_returns_none_when_dates_are_missing():
     from ai_assistant import _extract_date_range
 
     assert _extract_date_range(
-        "Show me transactions from August."
+        "Show me transactions."
     ) is None
 
 
@@ -3016,3 +3082,363 @@ def test_phase_one_complex_query_routing_is_preserved():
         "Show me posted Microsoft Software expenses over €50 "
         "between 2026-08-01 and 2026-08-31."
     ) == ["get_transactions"]
+
+
+def test_revenue_analysis_uses_accounting_semantics_and_binds(monkeypatch):
+    import re
+
+    import analytics
+
+    captured = {}
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, statement, parameters):
+            captured["statement"] = statement
+            captured["parameters"] = parameters
+
+        def fetchall(self):
+            return [
+                ("2026-07", 100, 1),
+                ("2026-08", 250.5, 2),
+            ]
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            captured["closed"] = True
+
+    monkeypatch.setattr(analytics, "get_connection", lambda: FakeConnection())
+
+    result = analytics.get_revenue_analysis(
+        start_date="2026-07-01",
+        end_date="2026-08-31",
+        period="month",
+    )
+
+    assert result == {
+        "period": "month",
+        "total_revenue": 350.5,
+        "transaction_count": 3,
+        "periods": [
+            {
+                "period": "2026-07",
+                "total_revenue": 100,
+                "transaction_count": 1,
+            },
+            {
+                "period": "2026-08",
+                "total_revenue": 250.5,
+                "transaction_count": 2,
+            },
+        ],
+    }
+    statement = captured["statement"]
+    assert "FROM financial_transactions" in statement
+    assert "FROM orders" not in statement
+    assert "transaction_type = 'SALE'" in statement
+    assert "status = 'POSTED'" in statement
+    assert "SUM(amount)" in statement
+    assert "TRUNC(transaction_date, 'MM')" in statement
+    assert set(re.findall(r":([a-z_]+)", statement)) == {
+        "start_date",
+        "end_date",
+    }
+    assert captured["parameters"] == {
+        "start_date": "2026-07-01",
+        "end_date": "2026-08-31",
+    }
+    assert "2026-07-01" not in statement
+    assert "2026-08-31" not in statement
+    assert captured["closed"] is True
+
+
+def test_expense_trends_uses_binds_and_calculates_changes(monkeypatch):
+    import re
+
+    import analytics
+
+    captured = {}
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, statement, parameters):
+            captured["statement"] = statement
+            captured["parameters"] = parameters
+
+        def fetchall(self):
+            return [
+                ("2026-01", 100, 2),
+                ("2026-02", 125, 3),
+                ("2026-04", 50, 1),
+            ]
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            captured["closed"] = True
+
+    monkeypatch.setattr(analytics, "get_connection", lambda: FakeConnection())
+
+    result = analytics.get_expense_trends(
+        category="Software",
+        vendor="micro",
+        start_date="2026-01-01",
+        end_date="2026-04-30",
+        period="month",
+    )
+
+    assert result["total_expenses"] == 275
+    assert result["transaction_count"] == 6
+    assert result["periods"][0]["change_amount"] is None
+    assert result["periods"][0]["change_percentage"] is None
+    assert result["periods"][1]["change_amount"] == 25
+    assert result["periods"][1]["change_percentage"] == 25
+    assert result["periods"][2]["period"] == "2026-03"
+    assert result["periods"][2]["total_expenses"] == 0
+    assert result["periods"][2]["transaction_count"] == 0
+    assert result["periods"][2]["change_percentage"] == -100
+    assert result["periods"][3]["change_amount"] == 50
+    assert result["periods"][3]["change_percentage"] is None
+    statement = captured["statement"]
+    assert "FROM financial_transactions" in statement
+    assert "FROM orders" not in statement
+    assert "transaction_type IN ('EXPENSE', 'BANK_FEE')" in statement
+    assert "status = 'POSTED'" in statement
+    assert "SUM(ABS(amount))" in statement
+    assert set(re.findall(r":([a-z_]+)", statement)) == {
+        "category",
+        "vendor",
+        "start_date",
+        "end_date",
+    }
+    assert captured["parameters"] == {
+        "category": "Software",
+        "vendor": "micro",
+        "start_date": "2026-01-01",
+        "end_date": "2026-04-30",
+    }
+    assert "micro" not in statement
+    assert captured["closed"] is True
+
+
+def test_financial_analytics_handle_empty_periods_and_invalid_grouping(monkeypatch):
+    import analytics
+    import pytest
+
+    closed = []
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, statement, parameters):
+            pass
+
+        def fetchall(self):
+            return []
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr(analytics, "get_connection", lambda: FakeConnection())
+
+    assert analytics.get_revenue_analysis(period="year") == {
+        "period": "year",
+        "total_revenue": 0,
+        "transaction_count": 0,
+        "periods": [],
+    }
+    assert analytics.get_expense_trends(period="month") == {
+        "period": "month",
+        "category": None,
+        "vendor": None,
+        "total_expenses": 0,
+        "transaction_count": 0,
+        "periods": [],
+    }
+    assert len(closed) == 2
+
+    with pytest.raises(ValueError, match="period must be"):
+        analytics.get_revenue_analysis(period="quarter")
+
+
+def test_named_month_date_ranges_are_deterministic_at_boundaries():
+    from datetime import date
+
+    from ai_assistant import _extract_date_range
+
+    assert _extract_date_range(
+        "How much revenue did we make in August?",
+        date(2026, 9, 3),
+    ) == ("2026-08-01", "2026-08-31")
+    assert _extract_date_range(
+        "Show revenue in December.",
+        date(2026, 9, 3),
+    ) == ("2025-12-01", "2025-12-31")
+    assert _extract_date_range(
+        "Show expenses in February 2024.",
+        date(2026, 9, 3),
+    ) == ("2024-02-01", "2024-02-29")
+
+
+def test_revenue_and_expense_trend_queries_route_without_raw_transactions():
+    from ai_assistant import _select_tools
+
+    examples = {
+        "How much revenue did we make in August?": "get_revenue_analysis",
+        "Show monthly revenue.": "get_revenue_analysis",
+        "Show annual revenue this year.": "get_revenue_analysis",
+        "Show monthly expenses.": "get_expense_trends",
+        "Show month-over-month Software expense trends.": "get_expense_trends",
+        "Show yearly Microsoft spending trends.": "get_expense_trends",
+    }
+
+    for question, expected_tool in examples.items():
+        assert _select_tools(question) == [expected_tool]
+
+
+def test_financial_analysis_formatters_handle_results_and_empty_periods():
+    from ai_assistant import (
+        _format_expense_trends,
+        _format_revenue_analysis,
+    )
+
+    revenue_message = _format_revenue_analysis({
+        "period": "month",
+        "total_revenue": 350.5,
+        "transaction_count": 3,
+        "periods": [
+            {
+                "period": "2026-08",
+                "total_revenue": 350.5,
+                "transaction_count": 3,
+            },
+        ],
+    })
+    expense_message = _format_expense_trends({
+        "period": "month",
+        "total_expenses": 225,
+        "transaction_count": 5,
+        "periods": [
+            {
+                "period": "2026-01",
+                "total_expenses": 100,
+                "transaction_count": 2,
+                "change_amount": None,
+                "change_percentage": None,
+            },
+            {
+                "period": "2026-02",
+                "total_expenses": 125,
+                "transaction_count": 3,
+                "change_amount": 25,
+                "change_percentage": 25,
+            },
+        ],
+    })
+
+    assert "Posted sale revenue: €350.50" in revenue_message
+    assert "2026-08: €350.50" in revenue_message
+    assert "Posted expense trend: €225.00" in expense_message
+    assert "+25.00% month over month" in expense_message
+    assert "No posted sale revenue" in _format_revenue_analysis({"periods": []})
+    assert "No posted expense spending" in _format_expense_trends({"periods": []})
+
+
+def test_demo_assistant_executes_financial_analysis_generically(monkeypatch):
+    from datetime import date
+
+    import ai_assistant
+
+    calls = []
+
+    def fake_revenue(**arguments):
+        calls.append(("get_revenue_analysis", arguments))
+        return {"periods": []}
+
+    def fake_expenses(**arguments):
+        calls.append(("get_expense_trends", arguments))
+        return {"periods": []}
+
+    monkeypatch.setattr(
+        ai_assistant,
+        "_current_local_date",
+        lambda: date(2026, 9, 3),
+    )
+    monkeypatch.setitem(
+        ai_assistant.TOOL_REGISTRY,
+        "get_revenue_analysis",
+        fake_revenue,
+    )
+    monkeypatch.setitem(
+        ai_assistant.TOOL_REGISTRY,
+        "get_expense_trends",
+        fake_expenses,
+    )
+
+    revenue_response = ai_assistant.ask_assistant(
+        "How much revenue did we make in August?"
+    )
+    expense_response = ai_assistant.ask_assistant(
+        "Show yearly Microsoft expense trends this year."
+    )
+
+    assert revenue_response.tool_name == "get_revenue_analysis"
+    assert expense_response.tool_name == "get_expense_trends"
+    assert calls == [
+        (
+            "get_revenue_analysis",
+            {
+                "start_date": "2026-08-01",
+                "end_date": "2026-08-31",
+                "period": "month",
+            },
+        ),
+        (
+            "get_expense_trends",
+            {
+                "category": None,
+                "vendor": "Microsoft",
+                "start_date": "2026-01-01",
+                "end_date": "2026-09-03",
+                "period": "year",
+            },
+        ),
+    ]
+
+
+def test_phase_one_and_existing_spending_routing_remain_preserved():
+    from ai_assistant import _select_tools
+
+    assert _select_tools(
+        "Show me posted Microsoft Software expenses over €50 "
+        "between 2026-08-01 and 2026-08-31."
+    ) == ["get_transactions"]
+    assert _select_tools(
+        "How much did we spend on Software last month?"
+    ) == ["get_spending_by_category"]
+    assert _select_tools(
+        "Show top 5 vendor spending this year."
+    ) == ["get_vendor_totals"]

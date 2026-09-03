@@ -2,7 +2,9 @@ from analytics import (
     get_ai_categorization_review_queue,
     get_audit_log,
     get_bookkeeping_summary,
+    get_expense_trends,
     get_reconciliation_review_queue,
+    get_revenue_analysis,
     get_spending_by_category,
     get_vendor_totals,
 )
@@ -48,6 +50,34 @@ def tool_get_vendor_totals(
         start_date=start_date,
         end_date=end_date,
         limit=limit,
+    )
+
+
+def tool_get_revenue_analysis(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period: str = "month",
+):
+    return get_revenue_analysis(
+        start_date=start_date,
+        end_date=end_date,
+        period=period,
+    )
+
+
+def tool_get_expense_trends(
+    category: str | None = None,
+    vendor: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period: str = "month",
+):
+    return get_expense_trends(
+        category=category,
+        vendor=vendor,
+        start_date=start_date,
+        end_date=end_date,
+        period=period,
     )
 
 
@@ -235,6 +265,8 @@ TOOL_REGISTRY = {
     "get_audit_log": tool_get_audit_log,
     "get_spending_by_category": tool_get_spending_by_category,
     "get_vendor_totals": tool_get_vendor_totals,
+    "get_revenue_analysis": tool_get_revenue_analysis,
+    "get_expense_trends": tool_get_expense_trends,
     "get_transactions_by_date": tool_get_transactions_by_date,
     "get_transactions": tool_get_transactions,
 }
@@ -357,6 +389,76 @@ TOOL_DEFINITIONS = [
                 },
             },
             "required": ["vendor", "start_date", "end_date", "limit"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "get_revenue_analysis",
+        "description": (
+            "Analyze posted SALE revenue from financial transactions, "
+            "including totals and monthly or yearly periods."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "start_date": {
+                    "type": ["string", "null"],
+                    "description": "Optional inclusive start date in YYYY-MM-DD format.",
+                },
+                "end_date": {
+                    "type": ["string", "null"],
+                    "description": "Optional inclusive end date in YYYY-MM-DD format.",
+                },
+                "period": {
+                    "type": "string",
+                    "enum": ["month", "year"],
+                    "description": "Calendar period used to group revenue.",
+                },
+            },
+            "required": ["start_date", "end_date", "period"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "get_expense_trends",
+        "description": (
+            "Analyze posted EXPENSE and BANK_FEE spending over monthly or "
+            "yearly periods, with period-over-period changes."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": ["string", "null"],
+                    "description": "Optional accounting category filter.",
+                },
+                "vendor": {
+                    "type": ["string", "null"],
+                    "description": "Optional full or partial vendor filter.",
+                },
+                "start_date": {
+                    "type": ["string", "null"],
+                    "description": "Optional inclusive start date in YYYY-MM-DD format.",
+                },
+                "end_date": {
+                    "type": ["string", "null"],
+                    "description": "Optional inclusive end date in YYYY-MM-DD format.",
+                },
+                "period": {
+                    "type": "string",
+                    "enum": ["month", "year"],
+                    "description": "Calendar period used to group expenses.",
+                },
+            },
+            "required": [
+                "category",
+                "vendor",
+                "start_date",
+                "end_date",
+                "period",
+            ],
             "additionalProperties": False,
         },
     },

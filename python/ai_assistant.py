@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
+import calendar
 import re
 
 from ai_tools import TOOL_REGISTRY
@@ -22,6 +23,21 @@ KNOWN_CATEGORIES = (
     "Travel",
     "Advertising",
     "Utilities",
+)
+
+MONTH_NAMES = (
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
 )
 
 @dataclass
@@ -58,6 +74,18 @@ def _extract_top_limit(question: str, default: int = 10) -> int:
         return default
 
     return min(max(int(match.group(1)), 1), 100)
+
+
+def _extract_analysis_period(question: str) -> str:
+    question_lower = question.lower()
+
+    if re.search(
+        r"\b(?:yearly|annual|annually|by year)\b",
+        question_lower,
+    ):
+        return "year"
+
+    return "month"
 
 
 def _extract_transaction_type(question: str) -> str | None:
@@ -207,24 +235,56 @@ def _select_tools(question: str) -> list[str]:
     has_spending_language = bool(
         re.search(r"\b(?:spend|spent|spending)\b", question_lower)
     )
+
+    has_trend_language = bool(
+        re.search(
+            r"\b(?:trend|trends|monthly|yearly|annual|annually|"
+            r"month-over-month|by month|by year)\b",
+            question_lower,
+        )
+    )
+
     wants_category_spending = (
-        "spending by category" in question_lower
-        or (
-            "expense category" in question_lower
-            and "most" in question_lower
+        not has_trend_language
+        and (
+            "spending by category" in question_lower
+            or (
+                "expense category" in question_lower
+                and "most" in question_lower
+            )
+            or (category is not None and has_spending_language)
         )
-        or (category is not None and has_spending_language)
     )
+
     wants_vendor_spending = (
-        "vendor spending" in question_lower
-        or (
-            "vendors" in question_lower
-            and "cost" in question_lower
+        not has_trend_language
+        and (
+            "vendor spending" in question_lower
+            or (
+                "vendors" in question_lower
+                and "cost" in question_lower
+            )
+            or (vendor is not None and has_spending_language)
         )
-        or (vendor is not None and has_spending_language)
     )
-    has_spending_analytics_request = (
-        wants_category_spending or wants_vendor_spending
+
+    wants_revenue_analysis = (
+        "revenue" in question_lower
+        and "transaction" not in question_lower
+        and "bookkeeping summary" not in question_lower
+        and "financial summary" not in question_lower
+    )
+
+    wants_expense_trends = (
+        bool(re.search(r"\b(?:expenses?|spending)\b", question_lower))
+        and has_trend_language
+    )
+
+    has_financial_analytics_request = (
+        wants_category_spending
+        or wants_vendor_spending
+        or wants_revenue_analysis
+        or wants_expense_trends
     )
     has_reconciliation_transaction_context = (
         reconciliation_status is not None
@@ -275,6 +335,12 @@ def _select_tools(question: str) -> list[str]:
     if wants_vendor_spending:
         tools.append("get_vendor_totals")
 
+    if wants_revenue_analysis:
+        tools.append("get_revenue_analysis")
+
+    if wants_expense_trends:
+        tools.append("get_expense_trends")
+
     has_transaction_filters = (
         "expenses over" in question_lower
         or "expenses above" in question_lower
@@ -306,7 +372,7 @@ def _select_tools(question: str) -> list[str]:
         )
     )
 
-    if not has_spending_analytics_request:
+    if not has_financial_analytics_request:
         if has_transaction_filters or has_relative_date_request:
             tools.append("get_transactions")
 
@@ -353,6 +419,26 @@ def _extract_date_range(
 
     question_lower = question.lower()
     today = reference_date or _current_local_date()
+
+    month_match = re.search(
+        rf"\b({'|'.join(MONTH_NAMES)})(?:\s+(20\d{{2}}))?\b",
+        question_lower,
+    )
+
+    if month_match:
+        month_number = MONTH_NAMES.index(month_match.group(1)) + 1
+        year = int(month_match.group(2)) if month_match.group(2) else today.year
+
+        if month_match.group(2) is None and month_number > today.month:
+            year -= 1
+
+        start_date = date(year, month_number, 1)
+        end_date = date(
+            year,
+            month_number,
+            calendar.monthrange(year, month_number)[1],
+        )
+        return start_date.isoformat(), end_date.isoformat()
 
     if re.search(r"\blast 30 days\b", question_lower):
         start_date = today - timedelta(days=29)
@@ -707,6 +793,12 @@ def _format_tool_result(
     if tool_name == "get_vendor_totals":
         return _format_vendor_totals(result)
 
+    if tool_name == "get_revenue_analysis":
+        return _format_revenue_analysis(result)
+
+    if tool_name == "get_expense_trends":
+        return _format_expense_trends(result)
+
     return f"Executed tool: {tool_name}"
 
 def _format_transactions_by_date(result: Any) -> str:
@@ -792,6 +884,24 @@ def _get_demo_tool_arguments(
             "limit": _extract_top_limit(question),
         }
 
+    if tool_name == "get_revenue_analysis":
+        date_range = _extract_date_range(question)
+        return {
+            "start_date": date_range[0] if date_range else None,
+            "end_date": date_range[1] if date_range else None,
+            "period": _extract_analysis_period(question),
+        }
+
+    if tool_name == "get_expense_trends":
+        date_range = _extract_date_range(question)
+        return {
+            "category": _extract_known_category(question),
+            "vendor": _extract_known_vendor(question),
+            "start_date": date_range[0] if date_range else None,
+            "end_date": date_range[1] if date_range else None,
+            "period": _extract_analysis_period(question),
+        }
+
     return {}
 
 
@@ -850,6 +960,61 @@ def _format_vendor_totals(result: Any) -> str:
             f"- {item['vendor']}: "
             f"€{float(item['total_spending']):.2f} across "
             f"{item['transaction_count']} transaction(s)."
+        )
+
+    return "\n".join(lines)
+
+
+def _format_revenue_analysis(result: Any) -> str:
+    if not result or not result.get("periods"):
+        return "No posted sale revenue was found for that period."
+
+    lines = [
+        "Posted sale revenue: "
+        f"€{float(result['total_revenue']):.2f} across "
+        f"{result['transaction_count']} transaction(s)."
+    ]
+
+    for item in result["periods"]:
+        lines.append(
+            f"- {item['period']}: "
+            f"€{float(item['total_revenue']):.2f} across "
+            f"{item['transaction_count']} transaction(s)."
+        )
+
+    return "\n".join(lines)
+
+
+def _format_expense_trends(result: Any) -> str:
+    if not result or not result.get("periods"):
+        return "No posted expense spending was found for that period."
+
+    lines = [
+        "Posted expense trend: "
+        f"€{float(result['total_expenses']):.2f} across "
+        f"{result['transaction_count']} transaction(s)."
+    ]
+    comparison_label = (
+        "month over month"
+        if result["period"] == "month"
+        else "year over year"
+    )
+
+    for item in result["periods"]:
+        change_percentage = item["change_percentage"]
+        change_text = (
+            "no previous period"
+            if item["change_amount"] is None
+            else (
+                f"{float(change_percentage):+.2f}% {comparison_label}"
+                if change_percentage is not None
+                else f"{comparison_label} change unavailable"
+            )
+        )
+        lines.append(
+            f"- {item['period']}: "
+            f"€{float(item['total_expenses']):.2f} across "
+            f"{item['transaction_count']} transaction(s); {change_text}."
         )
 
     return "\n".join(lines)

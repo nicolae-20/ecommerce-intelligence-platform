@@ -1,0 +1,60 @@
+.assistant-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.assistant-suggestions-label {
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.assistant-suggestion-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.assistant-suggestion-button {
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #ffffff;
+  color: #374151;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    transform 120ms ease;
+}
+
+.assistant-suggestion-button:hover:not(:disabled) {
+  border-color: #9ca3af;
+  background: #f9fafb;
+  transform: translateY(-1px);
+}
+
+.assistant-suggestion-button:focus-visible {
+  outline: 2px solid #111827;
+  outline-offset: 2px;
+}
+
+.assistant-suggestion-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (max-width: 600px) {
+  .assistant-suggestion-list {
+    flex-direction: column;
+  }
+
+  .assistant-suggestion-button {
+    width: 100%;
+    text-align: left;
+  }
+}

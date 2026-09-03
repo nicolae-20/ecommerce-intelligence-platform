@@ -1047,7 +1047,15 @@ Not yet complete.
 
 # 29. Immediate Next Milestone
 
-Milestone 4.2 — Structured Tool Results is complete.
+Phase 4 — AI Assistant Frontend Completion is complete.
+
+Completed milestones:
+
+```text
+4.1 Core Assistant Interaction
+4.2 Structured Tool Results
+4.3 Suggested Questions
+```
 
 The verified backend regression baseline remains:
 
@@ -1057,10 +1065,10 @@ The verified backend regression baseline remains:
 0 errors
 ```
 
-Milestone 4.2 was frontend-only, so the previously verified backend baseline
-remains authoritative.
+Phase 4 changes were frontend-only, so the previously verified backend
+baseline remains authoritative.
 
-Frontend verification:
+Frontend milestone verification:
 
 ```text
 npm run lint
@@ -1071,32 +1079,67 @@ npm run build
 passed
 ```
 
-The existing non-blocking Vite chunk-size warning remains an optimization
-concern and does not affect Milestone 4.2 correctness.
+The existing Vite main-bundle size warning remains non-blocking and is
+tracked as a later optimization concern.
 
-Assistant structured-result support now includes:
+The Assistant frontend now supports:
 
-* direct use of backend `tool_result`
-* runtime validation instead of unsafe casting
-* reusable structured-result helper module
-* reusable transaction table component
-* `get_transactions`
-* `get_transactions_by_date`
-* Demo Mode structured tool executions
-* current OpenAI Mode direct tool-result shape
-* plain-text fallback for unsupported result types
-* responsive transaction result presentation
-* no accounting state changes
+* question input and Enter/button submission
+* loading state and duplicate-submit protection
+* readable request/API errors
+* recovery after backend/network failure
+* multiline text responses
+* direct structured rendering from backend `tool_result`
+* transaction result tables
+* runtime validation of structured results
+* Demo Mode and current OpenAI Mode result shapes
+* plain-text fallback
+* suggested financial questions
+* direct suggestion submission
+* disabled suggestions during active requests
+* no accounting write actions from Assistant result UI
 
-Manual verification confirmed that transaction queries render structured
-tables while non-transaction Assistant queries continue to render normally.
-
-The next planned milestone is:
+The next roadmap phase is:
 
 ```text
-Phase 4
-Milestone 4.3 — Suggested Questions
+Phase 5
+RAG Improvements
 ```
+
+# 30. Immediate Next Query Targets
+
+Phase 5 should improve the quality and usefulness of accounting context
+retrieval used by investigation features.
+
+Initial work should inspect:
+
+```text
+python/accounting_rag.py
+```
+
+along with all callers and current tests before deciding what to change.
+
+The goal is not to build a generic RAG platform. The goal is to improve
+accounting-specific investigation context while preserving deterministic
+and human-reviewable behavior.
+
+# 31. Next Milestone Definition of Done
+
+The first Phase 5 milestone should not be considered defined until the
+existing RAG implementation and test coverage have been inspected.
+
+The initial inspection should determine:
+
+* what accounting knowledge is currently indexed or retrieved
+* how context is selected
+* how investigation tools consume that context
+* where retrieval quality is weak or brittle
+* which improvements can remain deterministic and testable
+* whether additional dependencies are actually necessary
+* how to avoid introducing paid API requirements
+* which targeted tests should prove the improvement
+
+---
 
 # 30. Immediate Next Query Targets
 

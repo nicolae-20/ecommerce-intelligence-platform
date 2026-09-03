@@ -935,25 +935,61 @@ continued to use the plain-text fallback.
 
 ## Milestone 4.3 — Suggested Questions
 
-Add useful examples such as:
+Completed the Assistant discoverability layer with lightweight,
+clickable suggested questions.
 
-```text
-What's our bookkeeping summary?
-```
+Implemented:
 
-```text
-Which transactions need AI review?
-```
+* six representative suggested Assistant questions
+* one-click submission
+* selected question is reflected in the visible input
+* suggestions disable while an Assistant request is active
+* loading and duplicate-submit protection from Milestone 4.1 preserved
+* structured transaction results from Milestone 4.2 preserved
+* plain-text fallback preserved for non-transaction responses
+* responsive suggestion controls
+* keyboard-accessible buttons
+* no chat history or conversation-management feature added
+* no accounting write actions added
 
-```text
-Show reconciliation issues.
-```
+Suggestions demonstrate:
 
-```text
-Show Software expenses over €50.
-```
+* bookkeeping summary
+* transaction filtering
+* AI categorization review
+* reconciliation review
+* deterministic anomaly investigation
+* financial statistics
 
----
+### Definition of Done
+
+* [x] concise suggested questions are visible
+* [x] suggestions cover multiple financial capabilities
+* [x] clicking a suggestion submits predictably
+* [x] selected question appears in the input
+* [x] suggestions disable during loading
+* [x] duplicate-submit protection remains intact
+* [x] structured transaction results still work
+* [x] plain-text fallback still works
+* [x] no accounting mutation introduced
+* [x] frontend lint passes with 0 warnings and 0 errors
+* [x] no TypeScript errors
+* [x] production build passes
+
+### Phase 4 Status
+
+Phase 4 — AI Assistant Frontend Completion is complete.
+
+The frontend now provides:
+
+1. robust Assistant input, loading, error and recovery behavior
+2. structured transaction tool results driven directly by backend data
+3. discoverable suggested financial questions
+4. safe plain-text fallback for unsupported structured result types
+
+The Assistant frontend is now sufficiently complete for the portfolio
+critical path. Further expansion should wait until later roadmap phases
+justify it.
 
 ## Milestone 4.4 — Tool Transparency
 
@@ -1574,36 +1610,19 @@ The project is portfolio-ready when:
 
 # CURRENT NEXT ACTION
 
-Start with:
+Start Phase 5 — RAG Improvements.
 
-```text
-Phase 4
-Milestone 4.3 — Suggested Questions
-```
+Before changing code:
 
-Goal:
+1. inspect `python/accounting_rag.py`
+2. inspect all current callers of the RAG layer
+3. inspect existing RAG-related tests
+4. identify what context is currently retrieved
+5. identify deterministic weaknesses before adding complexity
+6. preserve read-only investigation behavior
+7. do not introduce paid OpenAI requirements
+8. keep the implementation focused on accounting usefulness rather than
+   building a generic vector-search platform
 
-Improve Assistant discoverability by presenting a small set of useful,
-clickable example questions that demonstrate the strongest bookkeeping and
-financial investigation capabilities.
-
-Preferred implementation:
-
-* show 4 to 6 concise suggested questions near the Assistant input
-* clicking a suggestion should populate or directly submit the question
-* include examples for:
-  * bookkeeping summary
-  * transaction filtering
-  * AI review
-  * reconciliation investigation
-  * anomaly investigation
-  * financial analytics
-* keep loading and duplicate-submit protection from Milestone 4.1
-* keep structured-result rendering from Milestone 4.2
-* do not turn suggestions into a chatbot conversation/history feature
-* do not add accounting write actions
-* keep the implementation lightweight and portfolio-friendly
-* run frontend lint and production build before closing the milestone
-
-After Milestone 4.3, Phase 4 can be closed and work should move to the next
-roadmap phase rather than expanding the Assistant frontend indefinitely.
+Phase 4 is complete and should remain checkpointed before Phase 5 work
+begins.

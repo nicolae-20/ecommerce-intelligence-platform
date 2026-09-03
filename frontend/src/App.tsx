@@ -11,6 +11,7 @@ import {
 
 import "./App.css"
 import { AssistantTransactionTable } from "./components/AssistantTransactionTable"
+import { AssistantSuggestedQuestions } from "./components/AssistantSuggestedQuestions"
 import {
   extractAssistantTransactions,
   type AssistantTransaction,
@@ -603,11 +604,19 @@ const handleAICategorize = async () => {
   }
 }
 
-const handleAskAssistant = async () => {
-  const question = assistantQuestion.trim()
+const handleAskAssistant = async (
+  questionOverride?: string,
+) => {
+  const question = (
+    questionOverride ?? assistantQuestion
+  ).trim()
 
   if (!question || assistantLoading) {
     return
+  }
+
+  if (questionOverride !== undefined) {
+    setAssistantQuestion(question)
   }
 
   setAssistantLoading(true)
@@ -815,7 +824,9 @@ const handleAskAssistant = async () => {
 
     <button
       className="assistant-button"
-      onClick={handleAskAssistant}
+      onClick={() => {
+        void handleAskAssistant()
+      }}
       disabled={
         assistantLoading || !assistantQuestion.trim()
       }
@@ -823,6 +834,13 @@ const handleAskAssistant = async () => {
       {assistantLoading ? "Asking..." : "Ask Assistant"}
     </button>
   </div>
+
+  <AssistantSuggestedQuestions
+    disabled={assistantLoading}
+    onSelect={(question) => {
+      void handleAskAssistant(question)
+    }}
+  />
 
   {assistantError && (
     <div className="error-message" role="alert">

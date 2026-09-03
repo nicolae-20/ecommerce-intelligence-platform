@@ -82,6 +82,7 @@ def tool_get_transactions(
     category: str | None = None,
     vendor: str | None = None,
     transaction_type: str | None = None,
+    reconciliation_status: str | None = None,
     min_amount: float | None = None,
     max_amount: float | None = None,
     status: str | None = None,
@@ -117,6 +118,10 @@ def tool_get_transactions(
                     OR transaction_type = :transaction_type
                 )
                 AND (
+                    :reconciliation_status IS NULL
+                    OR reconciliation_status = :reconciliation_status
+                )
+                AND (
                     :min_amount IS NULL
                     OR ABS(amount) >= :min_amount
                 )
@@ -147,6 +152,7 @@ AND (
                 "category": category,
                 "vendor": vendor,
                 "transaction_type": transaction_type,
+                "reconciliation_status": reconciliation_status,
                 "min_amount": min_amount,
                 "max_amount": max_amount,
                 "status": status,
@@ -273,7 +279,8 @@ TOOL_DEFINITIONS = [
     "description": (
         "Get financial transactions using optional filters "
         "for accounting category, vendor, transaction type, "
-        "absolute transaction amount, and transaction status."
+        "reconciliation status, absolute transaction amount, "
+        "and transaction status."
     ),
     "parameters": {
         "type": "object",
@@ -297,6 +304,14 @@ TOOL_DEFINITIONS = [
                 "enum": ["SALE", "EXPENSE", "BANK_FEE", None],
                 "description": (
                     "Transaction type: SALE, EXPENSE, or BANK_FEE."
+                ),
+            },
+            "reconciliation_status": {
+                "type": ["string", "null"],
+                "enum": ["MATCHED", "UNMATCHED", None],
+                "description": (
+                    "Transaction reconciliation status: "
+                    "MATCHED or UNMATCHED."
                 ),
             },
             "min_amount": {
@@ -330,6 +345,7 @@ TOOL_DEFINITIONS = [
             "category",
             "vendor",
             "transaction_type",
+            "reconciliation_status",
             "min_amount",
             "max_amount",
             "status",

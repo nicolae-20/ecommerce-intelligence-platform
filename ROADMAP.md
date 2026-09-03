@@ -26,7 +26,7 @@ Do not mark a milestone complete until its Definition of Done has been satisfied
 Current verified test baseline:
 
 ```text
-96 passed
+99 passed
 0 failed
 0 errors
 ```
@@ -252,11 +252,11 @@ Show me unmatched Microsoft expenses.
 
 ### Definition of Done
 
-* [ ] reconciliation filter exists
-* [ ] actual database status values are validated
-* [ ] parser supports relevant vocabulary
-* [ ] combined filtering works
-* [ ] regression tests pass
+* [x] reconciliation filter exists
+* [x] actual database status values are validated
+* [x] parser supports relevant vocabulary
+* [x] combined filtering works
+* [x] regression tests pass — 99 passed
 
 ---
 
@@ -1304,7 +1304,7 @@ Start with:
 
 ```text
 Phase 1
-Milestone 1.3 — Reconciliation Status Filtering
+Milestone 1.4 — Categorization State Filtering
 ```
 
 Before implementation:
@@ -1312,9 +1312,9 @@ Before implementation:
 1. inspect `python/ai_tools.py`
 2. inspect `python/ai_assistant.py`
 3. inspect relevant tests in `tests/test_analytics.py`
-4. verify the actual reconciliation status values in Oracle
+4. verify existing category-null semantics in Oracle
 5. run or confirm the current test baseline
-6. implement reconciliation status filtering incrementally
+6. implement categorization state filtering incrementally
 
 Do not continue automatically into several later milestones in one large change unless explicitly requested.
 

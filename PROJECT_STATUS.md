@@ -9,7 +9,7 @@ This document describes the current known implementation state.
 Snapshot baseline:
 
 ```text
-96 passed
+99 passed
 0 failed
 0 errors
 ```
@@ -612,6 +612,7 @@ Current known filter arguments:
 category
 vendor
 transaction_type
+reconciliation_status
 min_amount
 max_amount
 status
@@ -630,6 +631,17 @@ BANK_FEE
 The filter is exposed through the existing AI tool schema and uses an Oracle
 bind parameter. The tool remains registered through `TOOL_REGISTRY` and is
 executed through the unchanged generic `_execute_tool()` path.
+
+Reconciliation status filtering supports the transaction-level values:
+
+```text
+MATCHED
+UNMATCHED
+```
+
+It is exposed through the same tool schema and uses its own Oracle bind
+parameter. Bank-review match types such as `EXACT_MATCH`, `POSSIBLE_MATCH`, and
+`NO_MATCH` retain their existing semantics.
 
 Amount comparisons use transaction magnitude through `ABS(amount)` where implemented.
 
@@ -667,6 +679,10 @@ Show me pending Software transactions under €100
 Show me Software expenses over €50 between 2026-08-01 and 2026-08-31
 ```
 
+```text
+Show me unmatched Microsoft expenses
+```
+
 ---
 
 # 21. Transaction Filter Parsing
@@ -683,6 +699,7 @@ Current known parsed fields:
 category
 vendor
 transaction_type
+reconciliation_status
 min_amount
 max_amount
 status
@@ -712,6 +729,11 @@ Known transaction types recognized deterministically include:
 * SALE
 * EXPENSE
 * BANK_FEE
+
+Known reconciliation statuses recognized deterministically include:
+
+* MATCHED
+* UNMATCHED
 
 Vendor matching in the SQL tool is case-insensitive and supports partial names.
 
@@ -781,7 +803,7 @@ tests/test_api.py
 Current known baseline:
 
 ```text
-96 passed
+99 passed
 ```
 
 Current automated regression command:
@@ -940,7 +962,6 @@ Still needs expansion beyond current filters.
 
 Planned additions include:
 
-* reconciliation_status
 * categorized / uncategorized
 * AI confidence filtering
 * improved amount parsing
@@ -998,11 +1019,11 @@ The next planned backend milestone is:
 
 ```text
 Phase 1
-Milestone 1.3 — Reconciliation Status Filtering
+Milestone 1.4 — Categorization State Filtering
 ```
 
-Extend transaction querying and deterministic Demo Mode parsing with a
-reconciliation-status filter using the actual database values.
+Extend transaction querying and deterministic Demo Mode parsing with
+categorized and uncategorized state based on category nullability.
 
 Primary files likely involved:
 
@@ -1021,11 +1042,11 @@ Potential API changes are not expected unless implementation inspection shows th
 After the next milestone, Demo Mode should be able to support queries conceptually similar to:
 
 ```text
-Show me unmatched Software transactions.
+Show me uncategorized transactions.
 ```
 
 ```text
-Show me unmatched Microsoft expenses.
+Show me categorized Microsoft expenses.
 ```
 
 The exact parser behavior should be deterministic and covered by tests.
@@ -1036,10 +1057,10 @@ The exact parser behavior should be deterministic and covered by tests.
 
 The immediate milestone is complete when:
 
-* a reconciliation-status filter exists
-* actual database status values are validated
-* Demo Mode supports relevant reconciliation vocabulary
-* reconciliation status composes with existing transaction filters
+* the query layer supports categorized state
+* SQL null semantics are correct
+* Demo Mode supports categorized and uncategorized language
+* categorization state composes with existing transaction filters
 * regression tests pass
 * this file is updated with the new baseline
 * the corresponding roadmap milestone is marked complete

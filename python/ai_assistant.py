@@ -46,6 +46,18 @@ def _extract_transaction_type(question: str) -> str | None:
     return None
 
 
+def _extract_reconciliation_status(question: str) -> str | None:
+    question_lower = question.lower()
+
+    if re.search(r"\bunmatched\b", question_lower):
+        return "UNMATCHED"
+
+    if re.search(r"\bmatched\b", question_lower):
+        return "MATCHED"
+
+    return None
+
+
 def _select_tool(question: str) -> str | None:
     question_lower = question.lower()
 
@@ -82,6 +94,17 @@ def _select_tool(question: str) -> str | None:
 
 def _select_tools(question: str) -> list[str]:
     question_lower = question.lower()
+    vendor = _extract_known_vendor(question)
+    transaction_type = _extract_transaction_type(question)
+    reconciliation_status = _extract_reconciliation_status(question)
+    has_reconciliation_transaction_context = (
+        reconciliation_status is not None
+        and (
+            "transaction" in question_lower
+            or vendor is not None
+            or transaction_type is not None
+        )
+    )
 
     tools: list[str] = []
 
@@ -101,9 +124,12 @@ def _select_tools(question: str) -> list[str]:
 
     if (
         "reconciliation" in question_lower
-        or "unmatched" in question_lower
         or "bank match" in question_lower
         or "bank matches" in question_lower
+        or (
+            "unmatched" in question_lower
+            and not has_reconciliation_transaction_context
+        )
     ):
         tools.append("get_reconciliation_review")
 
@@ -123,8 +149,9 @@ def _select_tools(question: str) -> list[str]:
         or "transactions under" in question_lower
         or "pending transactions" in question_lower
         or "posted transactions" in question_lower
-        or _extract_known_vendor(question) is not None
-        or _extract_transaction_type(question) is not None
+        or vendor is not None
+        or transaction_type is not None
+        or has_reconciliation_transaction_context
     )
 
     has_date_range_request = (
@@ -182,6 +209,7 @@ def _extract_transaction_filters(
     "category": None,
     "vendor": None,
     "transaction_type": None,
+    "reconciliation_status": None,
     "min_amount": None,
     "max_amount": None,
     "status": None,
@@ -207,6 +235,7 @@ def _extract_transaction_filters(
 
     filters["vendor"] = _extract_known_vendor(question)
     filters["transaction_type"] = _extract_transaction_type(question)
+    filters["reconciliation_status"] = _extract_reconciliation_status(question)
 
     min_match = re.search(
         r"(?:over|above|more than|at least)\s*€?\s*(\d+(?:\.\d+)?)",

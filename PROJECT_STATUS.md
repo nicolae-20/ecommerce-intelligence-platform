@@ -1047,280 +1047,97 @@ Not yet complete.
 
 # 29. Immediate Next Milestone
 
-Milestone 6.1 — Unified Categorization Validation and Confidence
-Contract is complete.
+Milestone 6.2 — Deterministic Demo Rule Coverage and Ambiguity
+Calibration is complete.
 
 Verified backend regression baseline:
 
 ```text
-175 passed
+180 passed
 0 failed
 0 errors
 ```
 
-Targeted Phase 6.1 validation:
+Targeted Phase 6.2 validation:
 
 ```text
 5 passed
 ```
 
-The categorization validation boundary now guarantees:
+Phase 6 completed so far:
 
-* confidence is numeric
-* confidence is finite
-* confidence is between 0 and 1 inclusive
-* Demo Mode suggestions are validated against the Chart of Accounts when
-  accounting context is available
-* client/OpenAI suggestions and Demo Mode share a common final validation
-  path
-* suggestions without context still receive confidence validation
+* 6.1 Unified Categorization Validation and Confidence Contract
+* 6.2 Deterministic Demo Rule Coverage and Ambiguity Calibration
 
-Existing accounting safety remains intact:
+Demo Mode now recognizes deterministic evidence for:
 
-* `ai_suggested_category` remains advisory
-* `ai_confidence` remains advisory
-* AI suggestions do not become final accounting truth automatically
-* final categorization continues to require human approval or manual
-  assignment
-* trusted RAG history remains based on final accounting assignments
+* Software
+* Office Supplies
+* Bank Fees
+* Advertising
+* Utilities
+* Travel
+
+Ambiguous lexical evidence is deliberately confidence-downgraded instead of
+being represented as high-confidence.
+
+Accounting safety remains unchanged:
+
+* AI suggestions remain advisory
+* high confidence does not equal accounting approval
+* final categorization remains human-controlled
+* RAG history remains based on trusted final category assignments
+* retrieval relevance remains distinct from AI confidence
+* no paid OpenAI usage is required for core development
 
 # 30. Immediate Next Query Targets
 
-Prepare Milestone 6.2 by evaluating deterministic categorization quality.
+Prepare Milestone 6.3 by inspecting transaction-type-aware categorization.
 
-Inspect concrete cases for:
+The current categorizer receives:
+
+* description
+* vendor
+* amount
+* accounting context
+
+It does not currently receive `transaction_type`.
+
+Inspect the smallest safe change required to make these values available:
 
 * `SALE`
 * `EXPENSE`
 * `BANK_FEE`
-* positive versus negative amounts
-* known software vendors
-* office-supply descriptions
-* advertising expenses
-* utilities
-* travel
-* unknown vendors and descriptions
-* conflicting trusted historical examples
 
-Determine which signals should affect:
+Then evaluate:
 
-1. predicted category
-2. AI confidence
-3. human-review urgency
-
-Do not use RAG retrieval score as AI confidence.
+* sale-like positive transactions
+* negative sale adjustments
+* positive expense refunds
+* bank-fee refunds
+* category/account-type compatibility
+* behavior when text and transaction type disagree
+* whether amount sign should be supporting evidence rather than the primary
+  transaction-type signal
 
 # 31. Next Milestone Definition of Done
 
-Milestone 6.2 should be defined from explicit categorization evaluation
-cases before modifying the rules.
+Milestone 6.3 should be defined after caller/signature inspection.
 
 Any implementation must preserve:
 
-* confidence range validation from 6.1
+* confidence range validation
 * Chart of Accounts validation
 * deterministic Demo Mode
+* ambiguity confidence downgrade
 * trusted final-category RAG history
 * retrieval-score / confidence separation
 * human approval for final categorization
-* no required paid API usage
-* targeted categorization-quality tests
-* full backend regression
-
----
-
-# 30. Immediate Next Query Targets
-
-Begin Phase 6 with AI categorization-quality inspection.
-
-Inspect:
-
-* `_demo_category_suggestion`
-* `CategorySuggestion`
-* `AI_CONFIDENCE_THRESHOLD`
-* `suggest_transaction_category`
-* `validate_category_suggestion`
-* categorization write paths
-* categorization tests
-* ambiguous-vendor and ambiguous-description behavior
-* mixed RAG evidence behavior
-
-The goal is to improve recommendation quality and confidence calibration,
-not to add autonomous accounting writes.
-
-# 31. Next Milestone Definition of Done
-
-The first Phase 6 milestone should be defined after inspection.
-
-Phase 6 work must preserve:
-
-* Chart of Accounts validation
-* human approval for final categorization
-* trusted historical RAG evidence
-* deterministic Demo Mode
 * read-only investigation behavior
-* retrieval-score / AI-confidence separation
-* no required paid OpenAI usage
+* OpenAI/client compatibility
+* no required paid API usage
 * targeted evaluation tests
 * full backend regression
-
----
-
-# 30. Immediate Next Query Targets
-
-The next Phase 5 investigation should focus on RAG evidence quality and
-explainability.
-
-Inspect:
-
-* how ranked examples are serialized into the categorization prompt
-* how historical examples are shown in uncategorized investigation evidence
-* whether retrieval reason or score should be included
-* whether conflicting examples for the same vendor/description can be
-  detected deterministically
-* whether the current five-example limit is sufficient
-* whether useful improvements belong in Phase 5 or should remain for
-  Phase 6 categorization-quality work
-
-Avoid turning Phase 5 into a generic vector-search project.
-
-# 31. Next Milestone Definition of Done
-
-Milestone 5.3 should be defined only after inspecting the current evidence
-presentation and conflict behavior.
-
-Any implementation should preserve:
-
-* final-category trusted-history boundary
-* deterministic retrieval behavior
-* no accounting mutation
-* human review for consequential accounting decisions
-* compatibility with Demo Mode
-* no required paid OpenAI usage
-* targeted tests for any new evidence rule
-* full backend regression
-
----
-
-# 30. Immediate Next Query Targets
-
-Before modifying RAG filtering again, inspect the categorization approval
-contract.
-
-The inspection must determine:
-
-* how manual category assignment is represented
-* how AI suggestions differ from final categories
-* what `ai_review_status` values exist
-* which path represents explicit human approval
-* what rejection means for a historical category
-* whether finalized categorization can be identified reliably
-* whether audit-log evidence is needed
-* whether legacy categorized transactions can be distinguished from
-  explicitly approved ones
-
-The current RAG implementation uses `category IS NOT NULL` as the historical
-example eligibility rule. Milestone 5.2 must not replace this with a stronger
-rule until the repository proves what "trusted" means.
-
-# 31. Next Milestone Definition of Done
-
-Milestone 5.2 — Trusted Historical Evidence should be considered complete
-only when:
-
-* the human approval/finalization contract has been inspected first
-* AI suggestions are never treated as final truth merely because they exist
-* RAG historical examples use a documented trust rule
-* deterministic ranking from Milestone 5.1 is preserved
-* read-only retrieval behavior is preserved
-* existing approved accounting history remains authoritative
-* targeted tests cover trusted versus untrusted examples
-* no accounting mutation is introduced into RAG
-* full backend regression passes
-* `PROJECT_STATUS.md` and `ROADMAP.md` are updated after verification
-
----
-
-# 30. Immediate Next Query Targets
-
-Phase 5 should improve the quality and usefulness of accounting context
-retrieval used by investigation features.
-
-Initial work should inspect:
-
-```text
-python/accounting_rag.py
-```
-
-along with all callers and current tests before deciding what to change.
-
-The goal is not to build a generic RAG platform. The goal is to improve
-accounting-specific investigation context while preserving deterministic
-and human-reviewable behavior.
-
-# 31. Next Milestone Definition of Done
-
-The first Phase 5 milestone should not be considered defined until the
-existing RAG implementation and test coverage have been inspected.
-
-The initial inspection should determine:
-
-* what accounting knowledge is currently indexed or retrieved
-* how context is selected
-* how investigation tools consume that context
-* where retrieval quality is weak or brittle
-* which improvements can remain deterministic and testable
-* whether additional dependencies are actually necessary
-* how to avoid introducing paid API requirements
-* which targeted tests should prove the improvement
-
----
-
-# 30. Immediate Next Query Targets
-
-Milestone 4.3 should expose representative Assistant capabilities through a
-small set of suggested questions.
-
-Candidate suggestions:
-
-```text
-What's our bookkeeping summary?
-```
-
-```text
-Show me Microsoft transactions.
-```
-
-```text
-Which transactions need AI review?
-```
-
-```text
-Which transactions look unusual?
-```
-
-```text
-Why is bank transaction 10 unmatched?
-```
-
-Suggested questions should improve discoverability without creating a full
-chat history or conversation-management system.
-
-# 31. Next Milestone Definition of Done
-
-Milestone 4.3 — Suggested Questions is complete when:
-
-* a concise set of useful Assistant suggestions is visible
-* suggestions cover multiple meaningful financial capabilities
-* selecting a suggestion works predictably
-* loading and duplicate-submit protection remains intact
-* structured transaction results from Milestone 4.2 still work
-* plain-text fallback still works
-* no accounting mutation is introduced
-* frontend lint passes with 0 warnings and 0 errors
-* no TypeScript errors remain
-* production build passes
-* `PROJECT_STATUS.md` and `ROADMAP.md` are updated after verification
 
 ---
 

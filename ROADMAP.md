@@ -1075,38 +1075,61 @@ If embeddings are introduced:
 
 # PHASE 6 — AI CATEGORIZATION QUALITY
 
----
+Phase 6 improves accounting-category recommendation quality while preserving
+human control over final accounting decisions.
 
-## Milestone 6.1 — Vendor-Aware Categorization
+Completed:
 
-Use approved vendor history.
+## Milestone 6.1 — Unified Categorization Validation and Confidence Contract
 
----
+* enforce finite AI confidence between 0 and 1
+* validate Demo Mode against the active Chart of Accounts
+* use one validation boundary across Demo/client/OpenAI paths
+* reject invalid suggestions before persistence
 
-## Milestone 6.2 — Description-Aware Categorization
-
-Use normalized descriptions and historical patterns.
-
----
-
-## Milestone 6.3 — Human Feedback Loop
-
-Approved/corrected categories become future trusted examples.
-
-Rejected suggestions do not.
+Status: complete.
 
 ---
 
-## Milestone 6.4 — Categorization Metrics
+## Milestone 6.2 — Deterministic Demo Rule Coverage and Ambiguity Calibration
 
-Potential dashboard metrics:
+* expand deterministic coverage for Advertising
+* expand deterministic coverage for Utilities
+* expand deterministic coverage for Travel
+* recognize generic software-subscription evidence
+* preserve strong AWS, Microsoft, Bank Fees, and Office Supplies behavior
+* detect multiple lexical category signals
+* reduce ambiguous Demo Mode suggestions below the high-confidence threshold
+* preserve deterministic behavior
+* keep unknown/fallback suggestions low-confidence
 
-* suggestion coverage
-* approval rate
-* rejection rate
-* correction rate
-* average confidence
-* categories requiring most review
+Status: complete.
+
+---
+
+## Milestone 6.3 — Transaction-Type-Aware Categorization
+
+Next candidate milestone.
+
+Evaluate whether `SALE`, `EXPENSE`, and `BANK_FEE` should become explicit
+categorization inputs.
+
+Focus on:
+
+* sale-like transactions currently falling through to expense categories
+* positive/negative amount behavior
+* bank-fee refunds and other sign conflicts
+* transaction-type/category compatibility
+* preserving deterministic Demo Mode behavior
+
+Do not infer transaction type from amount alone when an explicit transaction
+type is available.
+
+---
+
+Later Phase 6 work may evaluate RAG-aware confidence calibration,
+categorization metrics, and human-feedback quality without weakening the
+trusted-history boundary.
 
 ---
 
@@ -1768,7 +1791,7 @@ full regression:
 
 ---
 
-## Milestone 6.1 — Unified Categorization Validation and Confidence Contract
+## Completion Record 6.1 — Unified Categorization Validation and Confidence Contract
 
 Completed the common validation boundary for accounting category
 suggestions.
@@ -1814,6 +1837,69 @@ full regression:
 
 ---
 
+## Completion Record 6.2 — Deterministic Demo Rule Coverage and Ambiguity Calibration
+
+Completed deterministic Demo Mode categorization-quality improvements.
+
+Implemented:
+
+* Advertising recognition for explicit ad/campaign evidence
+* Utilities recognition for electricity, utility, water, and gas evidence
+* Travel recognition for hotel, accommodation, airfare, flight, and travel evidence
+* generic Software recognition for software subscription/license and SaaS evidence
+* deterministic multi-category signal detection
+* ambiguous lexical evidence confidence capped at 0.60
+* ambiguous suggestions therefore remain below the 0.80 high-confidence threshold
+* strong AWS behavior preserved at 0.97
+* strong Microsoft behavior preserved at 0.95 when no competing category signal exists
+* explicit Bank Fees behavior preserved at 0.99
+* Office Supplies behavior preserved
+* unknown fallback remains low-confidence at 0.10
+* no autonomous final categorization introduced
+* no paid API usage required
+
+Evaluation identified intentionally deferred cases:
+
+* positive sale-like transactions
+* positive AWS amounts
+* bank-fee refunds
+* transaction-type/category compatibility
+* fallback category semantics for unknown transactions
+
+These belong to later Phase 6 work because the current categorizer does not
+receive `transaction_type`.
+
+Validation:
+
+```text
+targeted:
+5 passed
+
+full regression:
+180 passed
+0 failed
+0 errors
+```
+
+### Definition of Done
+
+* [x] deterministic Demo category coverage is broader
+* [x] obvious Advertising examples are recognized
+* [x] obvious Utilities examples are recognized
+* [x] obvious Travel examples are recognized
+* [x] generic Software evidence is recognized
+* [x] competing lexical category signals reduce confidence
+* [x] ambiguous results are not high-confidence
+* [x] strong existing deterministic rules remain stable
+* [x] unknown results remain low-confidence
+* [x] confidence validation from 6.1 remains active
+* [x] Chart of Accounts validation remains active
+* [x] final accounting categorization remains human-controlled
+* [x] targeted tests pass
+* [x] full backend regression passes with 180 tests
+
+---
+
 # CURRENT NEXT ACTION
 
 Continue Phase 6 — AI Categorization Quality.
@@ -1822,33 +1908,37 @@ Completed:
 
 ```text
 6.1 Unified Categorization Validation and Confidence Contract
+6.2 Deterministic Demo Rule Coverage and Ambiguity Calibration
 ```
 
 Next candidate milestone:
 
 ```text
-6.2 Deterministic Demo Categorization Quality
+6.3 Transaction-Type-Aware Categorization
 ```
 
-Before implementing 6.2, inspect and define evaluation cases for:
+Before implementing 6.3, inspect the smallest safe contract change needed to
+make `transaction_type` available to categorization.
 
-* transaction type signals
-* amount-sign behavior
-* vendor-specific versus description-specific evidence
-* ambiguous descriptions
-* mixed historical RAG categories
-* whether mixed evidence should reduce AI confidence
-* fallback behavior for unknown transactions
-* whether confidence calibration should remain deterministic in Demo Mode
+Evaluate:
 
-Do not change final accounting autonomy.
+* `SALE`
+* `EXPENSE`
+* `BANK_FEE`
+* positive and negative amount combinations
+* sale-like descriptions
+* bank-fee refunds
+* category/account-type compatibility
+* all callers of `suggest_transaction_category`
+* OpenAI prompt compatibility
+* read-only investigation compatibility
 
 Preserve:
 
-* Chart of Accounts validation
-* confidence range validation
-* trusted RAG history
+* confidence validation from 6.1
+* ambiguity calibration from 6.2
+* deterministic Demo Mode
+* trusted final-category RAG history
 * retrieval-score / AI-confidence separation
 * human approval for final categorization
-* Demo Mode as the default development path
 * no required paid OpenAI usage

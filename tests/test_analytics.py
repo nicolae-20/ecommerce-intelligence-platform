@@ -5519,3 +5519,274 @@ def test_phase6_1_client_response_validates_confidence_without_context():
             amount=-129.0,
             client=MockClient(),
         )
+
+def test_phase6_2_demo_expands_category_coverage(
+    monkeypatch,
+):
+    from accounting_rag import AccountingContext
+    from llm_categorizer import (
+        suggest_transaction_category,
+    )
+
+    monkeypatch.setenv(
+        "AI_CATEGORIZATION_MODE",
+        "demo",
+    )
+
+    categories = [
+        ("Advertising", "EXPENSE"),
+        ("Utilities", "EXPENSE"),
+        ("Travel", "EXPENSE"),
+    ]
+
+    context = AccountingContext(
+        categories=[
+            {
+                "category_id": index,
+                "account_code": str(6500 + index),
+                "account_name": name,
+                "account_type": account_type,
+            }
+            for index, (name, account_type)
+            in enumerate(categories, start=1)
+        ],
+        examples=[],
+    )
+
+    cases = [
+        (
+            "Google Ads campaign",
+            "Google",
+            -450.0,
+            "Advertising",
+            0.92,
+        ),
+        (
+            "Monthly electricity bill",
+            "Energy Provider",
+            -300.0,
+            "Utilities",
+            0.90,
+        ),
+        (
+            "Hotel accommodation",
+            "Hilton",
+            -600.0,
+            "Travel",
+            0.90,
+        ),
+    ]
+
+    for (
+        description,
+        vendor,
+        amount,
+        expected_category,
+        expected_confidence,
+    ) in cases:
+        suggestion = suggest_transaction_category(
+            description=description,
+            vendor=vendor,
+            amount=amount,
+            context=context,
+        )
+
+        assert suggestion.category == expected_category
+        assert (
+            suggestion.confidence
+            == expected_confidence
+        )
+        assert suggestion.high_confidence is True
+
+
+def test_phase6_2_demo_recognizes_generic_software(
+    monkeypatch,
+):
+    from accounting_rag import AccountingContext
+    from llm_categorizer import (
+        suggest_transaction_category,
+    )
+
+    monkeypatch.setenv(
+        "AI_CATEGORIZATION_MODE",
+        "demo",
+    )
+
+    context = AccountingContext(
+        categories=[
+            {
+                "category_id": 3,
+                "account_code": "6100",
+                "account_name": "Software",
+                "account_type": "EXPENSE",
+            }
+        ],
+        examples=[],
+    )
+
+    suggestion = suggest_transaction_category(
+        description="Software subscription",
+        vendor=None,
+        amount=-49.0,
+        context=context,
+    )
+
+    assert suggestion.category == "Software"
+    assert suggestion.confidence == 0.86
+    assert suggestion.high_confidence is True
+
+
+def test_phase6_2_demo_downgrades_conflicting_category_signals(
+    monkeypatch,
+):
+    from accounting_rag import AccountingContext
+    from llm_categorizer import (
+        DEMO_AMBIGUOUS_CONFIDENCE,
+        suggest_transaction_category,
+    )
+
+    monkeypatch.setenv(
+        "AI_CATEGORIZATION_MODE",
+        "demo",
+    )
+
+    context = AccountingContext(
+        categories=[
+            {
+                "category_id": 3,
+                "account_code": "6100",
+                "account_name": "Software",
+                "account_type": "EXPENSE",
+            },
+            {
+                "category_id": 4,
+                "account_code": "6200",
+                "account_name": "Office Supplies",
+                "account_type": "EXPENSE",
+            },
+            {
+                "category_id": 5,
+                "account_code": "6300",
+                "account_name": "Bank Fees",
+                "account_type": "EXPENSE",
+            },
+        ],
+        examples=[],
+    )
+
+    cases = [
+        (
+            "Office supplies from Microsoft",
+            "Microsoft",
+            "Software",
+        ),
+        (
+            "Bank fee for office account",
+            "Office Bank",
+            "Bank Fees",
+        ),
+    ]
+
+    for description, vendor, expected_category in cases:
+        suggestion = suggest_transaction_category(
+            description=description,
+            vendor=vendor,
+            amount=-40.0,
+            context=context,
+        )
+
+        assert suggestion.category == expected_category
+        assert (
+            suggestion.confidence
+            == DEMO_AMBIGUOUS_CONFIDENCE
+        )
+        assert suggestion.high_confidence is False
+
+
+def test_phase6_2_demo_preserves_strong_existing_rules(
+    monkeypatch,
+):
+    from accounting_rag import AccountingContext
+    from llm_categorizer import (
+        suggest_transaction_category,
+    )
+
+    monkeypatch.setenv(
+        "AI_CATEGORIZATION_MODE",
+        "demo",
+    )
+
+    context = AccountingContext(
+        categories=[
+            {
+                "category_id": 3,
+                "account_code": "6100",
+                "account_name": "Software",
+                "account_type": "EXPENSE",
+            },
+            {
+                "category_id": 5,
+                "account_code": "6300",
+                "account_name": "Bank Fees",
+                "account_type": "EXPENSE",
+            },
+        ],
+        examples=[],
+    )
+
+    aws = suggest_transaction_category(
+        description="AWS monthly service",
+        vendor="Amazon Web Services",
+        amount=-129.0,
+        context=context,
+    )
+
+    bank_fee = suggest_transaction_category(
+        description="Monthly bank fee",
+        vendor="ING",
+        amount=-12.0,
+        context=context,
+    )
+
+    assert aws.category == "Software"
+    assert aws.confidence == 0.97
+
+    assert bank_fee.category == "Bank Fees"
+    assert bank_fee.confidence == 0.99
+
+
+def test_phase6_2_demo_unknown_remains_low_confidence(
+    monkeypatch,
+):
+    from accounting_rag import AccountingContext
+    from llm_categorizer import (
+        suggest_transaction_category,
+    )
+
+    monkeypatch.setenv(
+        "AI_CATEGORIZATION_MODE",
+        "demo",
+    )
+
+    context = AccountingContext(
+        categories=[
+            {
+                "category_id": 4,
+                "account_code": "6200",
+                "account_name": "Office Supplies",
+                "account_type": "EXPENSE",
+            }
+        ],
+        examples=[],
+    )
+
+    suggestion = suggest_transaction_category(
+        description="Professional service charge",
+        vendor="Unknown Vendor",
+        amount=-250.0,
+        context=context,
+    )
+
+    assert suggestion.category == "Office Supplies"
+    assert suggestion.confidence == 0.10
+    assert suggestion.high_confidence is False

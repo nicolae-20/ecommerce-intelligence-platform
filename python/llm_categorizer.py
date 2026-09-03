@@ -105,6 +105,9 @@ def _validate_suggestion_for_context(
         context,
     )
 
+DEMO_AMBIGUOUS_CONFIDENCE = 0.60
+
+
 def _demo_category_suggestion(
     description: str | None,
     vendor: str | None,
@@ -116,33 +119,135 @@ def _demo_category_suggestion(
         if value
     )
 
-    if "aws" in text or "amazon web services" in text:
-        return CategorySuggestion(
-            category="Software",
-            confidence=0.97,
+    matches: dict[str, float] = {}
+
+    def add_match(
+        category: str,
+        confidence: float,
+    ) -> None:
+        matches[category] = max(
+            confidence,
+            matches.get(category, 0.0),
+        )
+
+    if (
+        "aws" in text
+        or "amazon web services" in text
+    ):
+        add_match(
+            "Software",
+            0.97,
         )
 
     if "microsoft" in text:
-        return CategorySuggestion(
-            category="Software",
-            confidence=0.95,
+        add_match(
+            "Software",
+            0.95,
         )
 
     if "bank fee" in text:
-        return CategorySuggestion(
-            category="Bank Fees",
-            confidence=0.99,
+        add_match(
+            "Bank Fees",
+            0.99,
         )
 
-    if "office" in text or "supplies" in text:
+    if any(
+        marker in text
+        for marker in (
+            "google ads",
+            "facebook ads",
+            "meta ads",
+            "advertising",
+            "ad campaign",
+            "marketing campaign",
+        )
+    ):
+        add_match(
+            "Advertising",
+            0.92,
+        )
+
+    if any(
+        marker in text
+        for marker in (
+            "electricity bill",
+            "electric bill",
+            "utility bill",
+            "utilities",
+            "water bill",
+            "gas bill",
+        )
+    ):
+        add_match(
+            "Utilities",
+            0.90,
+        )
+
+    if any(
+        marker in text
+        for marker in (
+            "hotel",
+            "accommodation",
+            "airfare",
+            "flight",
+            "travel expense",
+        )
+    ):
+        add_match(
+            "Travel",
+            0.90,
+        )
+
+    if any(
+        marker in text
+        for marker in (
+            "software subscription",
+            "software license",
+            "software licence",
+            "saas",
+        )
+    ):
+        add_match(
+            "Software",
+            0.86,
+        )
+
+    if (
+        "office" in text
+        or "supplies" in text
+        or "printer paper" in text
+        or "stationery" in text
+    ):
+        add_match(
+            "Office Supplies",
+            0.88,
+        )
+
+    if matches:
+        ranked_matches = sorted(
+            matches.items(),
+            key=lambda item: (
+                -item[1],
+                item[0],
+            ),
+        )
+
+        category, confidence = ranked_matches[0]
+
+        if len(matches) > 1:
+            confidence = min(
+                confidence,
+                DEMO_AMBIGUOUS_CONFIDENCE,
+            )
+
         return CategorySuggestion(
-            category="Office Supplies",
-            confidence=0.88,
+            category=category,
+            confidence=confidence,
         )
 
     return CategorySuggestion(
-    category="Office Supplies",
-    confidence=0.10,
+        category="Office Supplies",
+        confidence=0.10,
     )
 
 

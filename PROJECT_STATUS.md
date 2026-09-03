@@ -1047,64 +1047,85 @@ Not yet complete.
 
 # 29. Immediate Next Milestone
 
-Phase 4 — AI Assistant Frontend Completion is complete.
+Milestone 5.1 — Deterministic RAG Example Ranking is complete.
 
-Completed milestones:
-
-```text
-4.1 Core Assistant Interaction
-4.2 Structured Tool Results
-4.3 Suggested Questions
-```
-
-The verified backend regression baseline remains:
+Verified regression baseline:
 
 ```text
-161 passed
+165 passed
 0 failed
 0 errors
 ```
 
-Phase 4 changes were frontend-only, so the previously verified backend
-baseline remains authoritative.
-
-Frontend milestone verification:
+Targeted RAG verification:
 
 ```text
-npm run lint
-0 warnings
-0 errors
-
-npm run build
-passed
+6 passed
+136 deselected
 ```
 
-The existing Vite main-bundle size warning remains non-blocking and is
-tracked as a later optimization concern.
+Milestone 5.1 improved historical-example retrieval without introducing
+embeddings, vector databases, new external dependencies, or paid API usage.
 
-The Assistant frontend now supports:
+The RAG layer now:
 
-* question input and Enter/button submission
-* loading state and duplicate-submit protection
-* readable request/API errors
-* recovery after backend/network failure
-* multiline text responses
-* direct structured rendering from backend `tool_result`
-* transaction result tables
-* runtime validation of structured results
-* Demo Mode and current OpenAI Mode result shapes
-* plain-text fallback
-* suggested financial questions
-* direct suggestion submission
-* disabled suggestions during active requests
-* no accounting write actions from Assistant result UI
+* normalizes vendor and description text deterministically
+* extracts meaningful description tokens
+* ranks exact vendor matches as the strongest evidence
+* recognizes partial vendor matches
+* scores exact description matches
+* scores description token overlap
+* deduplicates transaction examples
+* rejects examples with no relevant evidence
+* returns at most five ranked examples
+* preserves the existing `AccountingContext` interface
+* remains read-only
 
-The next roadmap phase is:
+The next planned milestone is:
 
 ```text
 Phase 5
-RAG Improvements
+Milestone 5.2 — Trusted Historical Evidence
 ```
+
+# 30. Immediate Next Query Targets
+
+Before modifying RAG filtering again, inspect the categorization approval
+contract.
+
+The inspection must determine:
+
+* how manual category assignment is represented
+* how AI suggestions differ from final categories
+* what `ai_review_status` values exist
+* which path represents explicit human approval
+* what rejection means for a historical category
+* whether finalized categorization can be identified reliably
+* whether audit-log evidence is needed
+* whether legacy categorized transactions can be distinguished from
+  explicitly approved ones
+
+The current RAG implementation uses `category IS NOT NULL` as the historical
+example eligibility rule. Milestone 5.2 must not replace this with a stronger
+rule until the repository proves what "trusted" means.
+
+# 31. Next Milestone Definition of Done
+
+Milestone 5.2 — Trusted Historical Evidence should be considered complete
+only when:
+
+* the human approval/finalization contract has been inspected first
+* AI suggestions are never treated as final truth merely because they exist
+* RAG historical examples use a documented trust rule
+* deterministic ranking from Milestone 5.1 is preserved
+* read-only retrieval behavior is preserved
+* existing approved accounting history remains authoritative
+* targeted tests cover trusted versus untrusted examples
+* no accounting mutation is introduced into RAG
+* full backend regression passes
+* `PROJECT_STATUS.md` and `ROADMAP.md` are updated after verification
+
+---
 
 # 30. Immediate Next Query Targets
 

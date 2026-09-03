@@ -4850,3 +4850,128 @@ def test_demo_assistant_executes_financial_anomalies_generically(monkeypatch):
     assert calls == [{"start_date": None, "end_date": None}]
     assert "LARGE_EXPENSE" in response.message
     assert "No accounting state was changed" in response.message
+def test_rag_ranking_prioritizes_exact_vendor():
+    from accounting_rag import (
+        rank_accounting_examples,
+    )
+
+    candidates = [
+        {
+            "transaction_id": 1,
+            "description": "Cloud software subscription",
+            "vendor": "Other Vendor",
+            "category": "Software",
+        },
+        {
+            "transaction_id": 2,
+            "description": "General subscription",
+            "vendor": "Microsoft",
+            "category": "Software",
+        },
+    ]
+
+    ranked = rank_accounting_examples(
+        description="Cloud software subscription",
+        vendor="Microsoft",
+        candidates=candidates,
+    )
+
+    assert [
+        item["transaction_id"]
+        for item in ranked
+    ] == [2, 1]
+
+
+def test_rag_ranking_rewards_description_overlap():
+    from accounting_rag import (
+        rank_accounting_examples,
+    )
+
+    candidates = [
+        {
+            "transaction_id": 10,
+            "description": "Annual cloud software subscription",
+            "vendor": None,
+            "category": "Software",
+        },
+        {
+            "transaction_id": 11,
+            "description": "Cloud hosting",
+            "vendor": None,
+            "category": "Software",
+        },
+        {
+            "transaction_id": 12,
+            "description": "Office printer paper",
+            "vendor": None,
+            "category": "Office Supplies",
+        },
+    ]
+
+    ranked = rank_accounting_examples(
+        description="Annual cloud software subscription",
+        vendor=None,
+        candidates=candidates,
+    )
+
+    assert [
+        item["transaction_id"]
+        for item in ranked
+    ] == [10, 11]
+
+
+def test_rag_ranking_deduplicates_and_limits_results():
+    from accounting_rag import (
+        rank_accounting_examples,
+    )
+
+    candidates = [
+        {
+            "transaction_id": transaction_id,
+            "description": "Software subscription",
+            "vendor": "Microsoft",
+            "category": "Software",
+        }
+        for transaction_id in range(1, 7)
+    ]
+
+    candidates.insert(
+        1,
+        dict(candidates[0]),
+    )
+
+    ranked = rank_accounting_examples(
+        description="Software subscription",
+        vendor="Microsoft",
+        candidates=candidates,
+        limit=5,
+    )
+
+    assert len(ranked) == 5
+    assert [
+        item["transaction_id"]
+        for item in ranked
+    ] == [1, 2, 3, 4, 5]
+
+
+def test_rag_ranking_ignores_candidates_without_evidence():
+    from accounting_rag import (
+        rank_accounting_examples,
+    )
+
+    candidates = [
+        {
+            "transaction_id": 20,
+            "description": "Office chairs",
+            "vendor": "Furniture Store",
+            "category": "Office Supplies",
+        }
+    ]
+
+    ranked = rank_accounting_examples(
+        description="Cloud hosting subscription",
+        vendor="Microsoft",
+        candidates=candidates,
+    )
+
+    assert ranked == []

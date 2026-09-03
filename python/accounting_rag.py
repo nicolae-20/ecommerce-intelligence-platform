@@ -1,12 +1,185 @@
 from dataclasses import dataclass
+import re
 
 from database import get_connection
+
+
+MAX_CONTEXT_EXAMPLES = 5
+CANDIDATE_FETCH_LIMIT = 20
+
+DESCRIPTION_STOP_WORDS = frozenset({
+    "and",
+    "for",
+    "from",
+    "into",
+    "onto",
+    "our",
+    "that",
+    "the",
+    "these",
+    "this",
+    "those",
+    "with",
+    "your",
+})
 
 
 @dataclass
 class AccountingContext:
     categories: list[dict]
     examples: list[dict]
+
+
+def _normalize_text(value: str | None) -> str:
+    if not value:
+        return ""
+
+    return " ".join(
+        re.findall(
+            r"[a-z0-9]+",
+            value.casefold(),
+        )
+    )
+
+
+def _description_tokens(
+    value: str | None,
+) -> tuple[str, ...]:
+    normalized = _normalize_text(value)
+
+    if not normalized:
+        return ()
+
+    tokens = []
+
+    for token in normalized.split():
+        if len(token) < 3:
+            continue
+
+        if token in DESCRIPTION_STOP_WORDS:
+            continue
+
+        if token not in tokens:
+            tokens.append(token)
+
+    return tuple(tokens)
+
+
+def _score_accounting_example(
+    description: str | None,
+    vendor: str | None,
+    example: dict,
+) -> int:
+    score = 0
+
+    query_vendor = _normalize_text(vendor)
+    example_vendor = _normalize_text(
+        example.get("vendor")
+    )
+
+    if query_vendor and example_vendor:
+        if query_vendor == example_vendor:
+            score += 200
+        elif (
+            query_vendor in example_vendor
+            or example_vendor in query_vendor
+        ):
+            score += 120
+
+    query_description = _normalize_text(
+        description
+    )
+    example_description = _normalize_text(
+        example.get("description")
+    )
+
+    if (
+        query_description
+        and example_description
+        and query_description == example_description
+    ):
+        score += 50
+
+    query_tokens = set(
+        _description_tokens(description)
+    )
+    example_tokens = set(
+        _description_tokens(
+            example.get("description")
+        )
+    )
+
+    overlap = query_tokens & example_tokens
+
+    if overlap:
+        score += len(overlap) * 20
+
+        if query_tokens:
+            overlap_ratio = (
+                len(overlap)
+                / len(query_tokens)
+            )
+            score += round(
+                overlap_ratio * 30
+            )
+
+    return score
+
+
+def rank_accounting_examples(
+    description: str | None,
+    vendor: str | None,
+    candidates: list[dict],
+    limit: int = MAX_CONTEXT_EXAMPLES,
+) -> list[dict]:
+    if limit <= 0:
+        return []
+
+    scored_examples = []
+    seen_ids: set[int] = set()
+
+    for candidate in candidates:
+        transaction_id = candidate.get(
+            "transaction_id"
+        )
+
+        if not isinstance(transaction_id, int):
+            continue
+
+        if transaction_id in seen_ids:
+            continue
+
+        seen_ids.add(transaction_id)
+
+        score = _score_accounting_example(
+            description=description,
+            vendor=vendor,
+            example=candidate,
+        )
+
+        if score <= 0:
+            continue
+
+        scored_examples.append(
+            (
+                score,
+                transaction_id,
+                candidate,
+            )
+        )
+
+    scored_examples.sort(
+        key=lambda item: (
+            -item[0],
+            item[1],
+        )
+    )
+
+    return [
+        dict(candidate)
+        for _, _, candidate
+        in scored_examples[:limit]
+    ]
 
 
 def get_accounting_context(
@@ -38,10 +211,30 @@ def get_accounting_context(
                 for row in cursor.fetchall()
             ]
 
-            examples: list[dict] = []
-            seen_ids: set[int] = set()
+            candidates: list[dict] = []
+            candidate_ids: set[int] = set()
 
-            # 1. Vendor match gets highest priority.
+            def add_candidates(rows):
+                for row in rows:
+                    transaction_id = row[0]
+
+                    if transaction_id in candidate_ids:
+                        continue
+
+                    candidate_ids.add(
+                        transaction_id
+                    )
+
+                    candidates.append({
+                        "transaction_id": row[0],
+                        "description": row[1],
+                        "vendor": row[2],
+                        "category": row[3],
+                    })
+
+            # Vendor candidates remain important, but they
+            # no longer automatically consume all five
+            # final context slots.
             if vendor and vendor.strip():
                 cursor.execute("""
                     SELECT
@@ -52,66 +245,50 @@ def get_accounting_context(
                     FROM financial_transactions
                     WHERE category IS NOT NULL
                       AND vendor IS NOT NULL
-                      AND LOWER(vendor) LIKE '%' || LOWER(:vendor) || '%'
+                      AND LOWER(vendor)
+                          LIKE '%' || LOWER(:vendor) || '%'
                     ORDER BY transaction_id
-                    FETCH FIRST 5 ROWS ONLY
+                    FETCH FIRST 20 ROWS ONLY
                 """, {
                     "vendor": vendor.strip(),
                 })
 
-                for row in cursor.fetchall():
-                    example = {
-                        "transaction_id": row[0],
-                        "description": row[1],
-                        "vendor": row[2],
-                        "category": row[3],
-                    }
+                add_candidates(
+                    cursor.fetchall()
+                )
 
-                    examples.append(example)
-                    seen_ids.add(row[0])
+            # Gather a broader deterministic candidate set
+            # from meaningful description tokens.
+            for keyword in _description_tokens(
+                description
+            ):
+                cursor.execute("""
+                    SELECT
+                        transaction_id,
+                        description,
+                        vendor,
+                        category
+                    FROM financial_transactions
+                    WHERE category IS NOT NULL
+                      AND description IS NOT NULL
+                      AND LOWER(description)
+                          LIKE '%' || LOWER(:keyword) || '%'
+                    ORDER BY transaction_id
+                    FETCH FIRST 20 ROWS ONLY
+                """, {
+                    "keyword": keyword,
+                })
 
-            # 2. Description keyword matches fill remaining slots.
-            if description and len(examples) < 5:
-                keywords = [
-                    word.strip(".,-/()")
-                    for word in description.split()
-                    if len(word.strip(".,-/()")) >= 4
-                ]
+                add_candidates(
+                    cursor.fetchall()
+                )
 
-                for keyword in keywords:
-                    if len(examples) >= 5:
-                        break
-
-                    cursor.execute("""
-                        SELECT
-                            transaction_id,
-                            description,
-                            vendor,
-                            category
-                        FROM financial_transactions
-                        WHERE category IS NOT NULL
-                          AND LOWER(description) LIKE '%' || LOWER(:keyword) || '%'
-                        ORDER BY transaction_id
-                        FETCH FIRST 5 ROWS ONLY
-                    """, {
-                        "keyword": keyword,
-                    })
-
-                    for row in cursor.fetchall():
-                        if row[0] in seen_ids:
-                            continue
-
-                        examples.append({
-                            "transaction_id": row[0],
-                            "description": row[1],
-                            "vendor": row[2],
-                            "category": row[3],
-                        })
-
-                        seen_ids.add(row[0])
-
-                        if len(examples) >= 5:
-                            break
+            examples = rank_accounting_examples(
+                description=description,
+                vendor=vendor,
+                candidates=candidates,
+                limit=MAX_CONTEXT_EXAMPLES,
+            )
 
             return AccountingContext(
                 categories=categories,

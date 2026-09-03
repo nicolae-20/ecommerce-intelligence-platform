@@ -1608,21 +1608,92 @@ The project is portfolio-ready when:
 
 ---
 
+## Milestone 5.1 — Deterministic RAG Example Ranking
+
+Completed deterministic, accounting-specific ranking of historical
+categorization examples without embeddings, vector databases, or paid API
+requirements.
+
+Implemented:
+
+* deterministic normalization of vendor and description text
+* meaningful description token extraction
+* stop-word filtering
+* exact vendor matching as the strongest retrieval signal
+* partial vendor matching
+* exact description matching
+* description token-overlap scoring
+* deterministic ranking independent of database result order
+* duplicate transaction removal
+* maximum five supporting examples
+* rejection of candidates with no relevant evidence
+* preservation of the existing `AccountingContext` contract
+* preservation of read-only investigation behavior
+* no accounting writes introduced
+* no new external dependencies
+
+Validation:
+
+```text
+targeted RAG tests:
+6 passed
+
+full regression:
+165 passed
+0 failed
+0 errors
+```
+
+### Definition of Done
+
+* [x] retrieval remains deterministic
+* [x] vendor evidence receives explicit priority
+* [x] description relevance affects ranking
+* [x] duplicate examples are removed
+* [x] irrelevant candidates are excluded
+* [x] result limit remains bounded
+* [x] existing RAG context contract remains compatible
+* [x] no embeddings or vector database added
+* [x] no paid OpenAI dependency introduced
+* [x] read-only investigation contract remains intact
+* [x] targeted tests pass
+* [x] full regression suite passes with 165 tests
+
+---
+
 # CURRENT NEXT ACTION
 
-Start Phase 5 — RAG Improvements.
+Continue Phase 5 with:
 
-Before changing code:
+```text
+Milestone 5.2 — Trusted Historical Evidence
+```
 
-1. inspect `python/accounting_rag.py`
-2. inspect all current callers of the RAG layer
-3. inspect existing RAG-related tests
-4. identify what context is currently retrieved
-5. identify deterministic weaknesses before adding complexity
-6. preserve read-only investigation behavior
-7. do not introduce paid OpenAI requirements
-8. keep the implementation focused on accounting usefulness rather than
-   building a generic vector-search platform
+Before implementing any filtering rule, inspect how the current accounting
+workflow records a human-approved or final categorization decision.
 
-Phase 4 is complete and should remain checkpointed before Phase 5 work
-begins.
+The key question is whether `category IS NOT NULL` is sufficient evidence
+that a historical transaction is trustworthy.
+
+Milestone 5.2 should begin by inspecting:
+
+* transaction categorization approval flow
+* `ai_review_status`
+* category assignment and approval functions
+* audit-log actions related to categorization
+* status fields that distinguish AI suggestions from human decisions
+* tests around approve/reject/manual category assignment
+
+Only after that inspection should the RAG layer be changed to prefer or
+restrict examples to trusted historical decisions.
+
+Do not assume a database field means "human approved" until the write path
+and tests confirm it.
+
+The milestone must preserve:
+
+* human-controlled accounting writes
+* read-only RAG retrieval
+* deterministic ranking from Milestone 5.1
+* no paid API requirement
+* existing categorization safety boundaries

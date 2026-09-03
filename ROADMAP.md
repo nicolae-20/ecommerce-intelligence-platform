@@ -804,21 +804,57 @@ Some AI Assistant scaffolding may already exist.
 
 ## Milestone 4.1 — Core Assistant Interaction
 
-Complete:
+Completed and hardened the existing Assistant frontend rather than rebuilding it.
+
+The frontend now provides:
 
 * question input
-* submit
-* loading
-* error handling
-* response display
+* submit by button
+* submit by Enter
+* duplicate-submit protection while a request is active
+* visible loading state
+* disabled input and button while loading
+* dedicated Assistant error state
+* readable HTTP/API errors
+* response contract validation
+* multiline response rendering
+* recovery after backend/network failure
+
+The frontend continues to call:
+
+```text
+POST /bookkeeping/ai-assistant
+```
+
+with:
+
+```json
+{
+  "question": "..."
+}
+```
+
+and renders the backend `message` response.
+
+Manual verification covered:
+
+* bookkeeping summary
+* AI categorization review
+* deterministic anomaly investigation
+* reconciliation investigation
+* backend unavailable/error recovery
 
 ### Definition of Done
 
-* [ ] endpoint works from frontend
-* [ ] loading state works
-* [ ] errors are readable
-* [ ] no TypeScript errors
-* [ ] production build passes
+* [x] endpoint works from frontend
+* [x] loading state works
+* [x] errors are readable
+* [x] response display works
+* [x] duplicate submit is prevented while loading
+* [x] multiline responses remain readable
+* [x] no TypeScript errors
+* [x] frontend lint passes with 0 warnings and 0 errors
+* [x] production build passes
 
 ---
 
@@ -1483,35 +1519,32 @@ Start with:
 
 ```text
 Phase 4
-Milestone 4.1 — Core Assistant Interaction
+Milestone 4.2 — Structured Tool Results
 ```
 
 Goal:
 
-Complete and verify the existing AI Assistant frontend interaction rather than
-rebuilding it from scratch.
+Render useful financial Assistant results as structured frontend UI where the
+backend already provides enough structure, instead of relying only on a plain
+text paragraph.
 
 Before implementation:
 
-1. inspect the current `frontend/src/App.tsx`
-2. inspect the Assistant API call and response contract
-3. identify which Milestone 4.1 requirements already exist
-4. verify question input and submit behavior
-5. verify loading state
-6. verify readable error handling
-7. verify response display
-8. preserve existing bookkeeping and dashboard behavior
-9. run targeted frontend checks during development
-10. run the production frontend build before closing the milestone
+1. inspect the current Assistant response schema returned by the backend
+2. inspect whether tool name and structured result data already reach the API
+3. avoid changing the generic `_execute_tool()` backend boundary unnecessarily
+4. identify the smallest high-value result type for structured rendering
+5. prefer reusable Assistant result components over adding more logic directly
+   into the existing large `App.tsx`
+6. preserve the plain-text Assistant message as a safe fallback
+7. do not add accounting write actions to Assistant result cards
+8. run frontend lint and production build before closing the milestone
 
-Milestone 4.1 Definition of Done:
+Initial structured-result candidates:
 
-* Assistant endpoint works from the frontend
-* loading state works
-* errors are readable
-* response rendering is usable
-* no TypeScript errors
-* production build passes
+* transaction lists
+* AI review queue results
+* anomaly investigation results
+* financial statistics
 
-Do not begin structured-result UI work from Milestone 4.2 until the core
-interaction is verified.
+Do not turn Milestone 4.2 into a full frontend redesign.

@@ -127,8 +127,9 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [assistantQuestion, setAssistantQuestion] = useState("")
-const [assistantResponse, setAssistantResponse] = useState("")
-const [assistantLoading, setAssistantLoading] = useState(false)
+  const [assistantResponse, setAssistantResponse] = useState("")
+  const [assistantError, setAssistantError] = useState("")
+  const [assistantLoading, setAssistantLoading] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -596,11 +597,14 @@ const handleAICategorize = async () => {
 }
 
 const handleAskAssistant = async () => {
-  if (!assistantQuestion.trim()) {
+  const question = assistantQuestion.trim()
+
+  if (!question || assistantLoading) {
     return
   }
 
   setAssistantLoading(true)
+  setAssistantError("")
   setAssistantResponse("")
 
   try {
@@ -612,22 +616,50 @@ const handleAskAssistant = async () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          question: assistantQuestion,
+          question,
         }),
       }
     )
 
     if (!response.ok) {
-      throw new Error("Failed to contact AI Assistant")
+      const errorData: unknown = await response
+        .json()
+        .catch(() => null)
+
+      let errorMessage =
+        `AI Assistant request failed (${response.status})`
+
+      if (
+        errorData &&
+        typeof errorData === "object" &&
+        "detail" in errorData &&
+        typeof errorData.detail === "string"
+      ) {
+        errorMessage = errorData.detail
+      }
+
+      throw new Error(errorMessage)
     }
 
-    const data = await response.json()
+    const data: unknown = await response.json()
+
+    if (
+      !data ||
+      typeof data !== "object" ||
+      !("message" in data) ||
+      typeof data.message !== "string" ||
+      !data.message.trim()
+    ) {
+      throw new Error(
+        "AI Assistant returned an invalid response"
+      )
+    }
 
     setAssistantResponse(data.message)
   } catch (error) {
     console.error("AI Assistant error:", error)
 
-    setAssistantResponse(
+    setAssistantError(
       error instanceof Error
         ? error.message
         : "Could not contact AI Assistant"
@@ -748,9 +780,11 @@ const handleAskAssistant = async () => {
       }
       onKeyDown={(event) => {
         if (event.key === "Enter") {
-          handleAskAssistant()
+          event.preventDefault()
+          void handleAskAssistant()
         }
       }}
+      disabled={assistantLoading}
       placeholder="Ask about bookkeeping, AI review, reconciliation, or audit activity..."
     />
 
@@ -765,10 +799,22 @@ const handleAskAssistant = async () => {
     </button>
   </div>
 
+  {assistantError && (
+    <div className="error-message" role="alert">
+      {assistantError}
+    </div>
+  )}
+
   {assistantResponse && (
-    <div className="assistant-response">
+    <div
+      className="assistant-response"
+      role="status"
+      aria-live="polite"
+    >
       <strong>Assistant</strong>
-      <p>{assistantResponse}</p>
+      <p style={{ whiteSpace: "pre-wrap" }}>
+        {assistantResponse}
+      </p>
     </div>
   )}
 </section>

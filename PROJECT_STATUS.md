@@ -1047,9 +1047,9 @@ Not yet complete.
 
 # 29. Immediate Next Milestone
 
-Milestone 3.3 — Deterministic Anomaly Detection is complete.
+Milestone 4.1 — Core Assistant Interaction is complete.
 
-The current verified backend baseline is:
+The verified backend regression baseline remains:
 
 ```text
 161 passed
@@ -1057,64 +1057,54 @@ The current verified backend baseline is:
 0 errors
 ```
 
-Milestone 3.3 added the read-only:
+Milestone 4.1 was frontend-only, so the backend suite did not need to be rerun
+after the previously verified 161-test baseline.
+
+Frontend verification:
 
 ```text
-get_financial_anomalies
+npm run lint
+0 warnings
+0 errors
+
+npm run build
+passed
 ```
 
-tool and deterministic anomaly logic for:
+The production build currently reports a non-blocking Vite chunk-size warning
+for the main JavaScript bundle. This is an optimization concern, not a
+Milestone 4.1 correctness failure.
 
-* unusually large posted expenses
-* exact duplicate-looking transactions
-* repeated bank-fee signatures
+The Assistant frontend now supports:
 
-Large-expense detection uses:
+* question input
+* button and Enter submission
+* request loading state
+* duplicate-submit prevention
+* disabled controls during requests
+* separate readable error state
+* HTTP/API error handling
+* response contract validation
+* multiline response rendering
+* recovery after backend/network failure
 
-* posted `EXPENSE` and `BANK_FEE` transactions
-* absolute amounts
-* a minimum 3-transaction baseline
-* `max(EUR 100, 1.5 x average expense)` as the threshold
-
-Duplicate-looking transactions require matching date, transaction type,
-absolute amount, normalized description, and normalized vendor.
-
-Repeated bank-fee detection groups matching amount, description, and vendor
-signatures.
-
-Every anomaly result exposes:
-
-* anomaly type
-* severity
-* transaction IDs
-* deterministic reason
-* supporting evidence
-* human-review requirement
-
-Anomalies are explicitly treated as investigation signals rather than confirmed
-accounting errors.
-
-The anomaly path performs no accounting write and no commit.
+Manual Assistant checks successfully covered bookkeeping summary, AI review,
+financial anomaly detection, reconciliation investigation, and backend restart
+recovery.
 
 The next planned milestone is:
 
 ```text
 Phase 4
-Milestone 4.1 — Core Assistant Interaction
+Milestone 4.2 — Structured Tool Results
 ```
-
-The frontend already contains Assistant scaffolding, so the next step is to
-inspect and complete the existing implementation rather than replace it.
 
 # 30. Immediate Next Query Targets
 
-Milestone 4.1 is primarily a frontend interaction milestone.
+Milestone 4.2 should improve presentation for Assistant responses that contain
+financial structures.
 
-The Assistant should successfully send questions such as:
-
-```text
-What's our bookkeeping summary?
-```
+High-value candidate queries include:
 
 ```text
 Which transactions need AI review?
@@ -1124,25 +1114,30 @@ Which transactions need AI review?
 Which transactions look unusual?
 ```
 
-and render the backend response through a clear loading/error/result flow.
+```text
+Show me Microsoft transactions.
+```
 
-The milestone should preserve the read-only accounting safety boundaries already
-implemented in the backend.
+```text
+What are our financial statistics?
+```
+
+Plain-text Assistant output should remain available as a fallback.
 
 # 31. Next Milestone Definition of Done
 
-Milestone 4.1 — Core Assistant Interaction is complete when:
+Milestone 4.2 — Structured Tool Results is complete when:
 
-* the current Assistant frontend implementation has been inspected
-* question input works
-* submit behavior works
-* the Assistant endpoint is called successfully
-* loading state is visible and correct
-* API/network errors are readable to the user
-* successful responses are rendered clearly
-* existing dashboard/bookkeeping functionality is not regressed
+* the current Assistant API response contract has been inspected first
+* at least one high-value financial result is rendered structurally
+* structured rendering is based on backend data rather than parsing prose
+* plain-text response rendering remains a fallback
+* loading and error behavior from Milestone 4.1 remains intact
+* no accounting mutation is introduced by result rendering
+* frontend code remains maintainable and avoids unnecessary duplication
+* frontend lint passes
 * no TypeScript errors remain
-* production frontend build passes
+* production build passes
 * `PROJECT_STATUS.md` and `ROADMAP.md` are updated after verification
 
 ---

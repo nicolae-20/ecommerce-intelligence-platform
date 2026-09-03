@@ -238,16 +238,20 @@ def get_accounting_context(
             if vendor and vendor.strip():
                 cursor.execute("""
                     SELECT
-                        transaction_id,
-                        description,
-                        vendor,
-                        category
-                    FROM financial_transactions
-                    WHERE category IS NOT NULL
-                      AND vendor IS NOT NULL
-                      AND LOWER(vendor)
+                        ft.transaction_id,
+                        ft.description,
+                        ft.vendor,
+                        ac.account_name
+                    FROM financial_transactions ft
+                    JOIN accounting_categories ac
+                      ON ac.accounting_category_id =
+                         ft.accounting_category_id
+                     AND ac.is_active = 'Y'
+                    WHERE ft.accounting_category_id IS NOT NULL
+                      AND ft.vendor IS NOT NULL
+                      AND LOWER(ft.vendor)
                           LIKE '%' || LOWER(:vendor) || '%'
-                    ORDER BY transaction_id
+                    ORDER BY ft.transaction_id
                     FETCH FIRST 20 ROWS ONLY
                 """, {
                     "vendor": vendor.strip(),
@@ -264,16 +268,20 @@ def get_accounting_context(
             ):
                 cursor.execute("""
                     SELECT
-                        transaction_id,
-                        description,
-                        vendor,
-                        category
-                    FROM financial_transactions
-                    WHERE category IS NOT NULL
-                      AND description IS NOT NULL
-                      AND LOWER(description)
+                        ft.transaction_id,
+                        ft.description,
+                        ft.vendor,
+                        ac.account_name
+                    FROM financial_transactions ft
+                    JOIN accounting_categories ac
+                      ON ac.accounting_category_id =
+                         ft.accounting_category_id
+                     AND ac.is_active = 'Y'
+                    WHERE ft.accounting_category_id IS NOT NULL
+                      AND ft.description IS NOT NULL
+                      AND LOWER(ft.description)
                           LIKE '%' || LOWER(:keyword) || '%'
-                    ORDER BY transaction_id
+                    ORDER BY ft.transaction_id
                     FETCH FIRST 20 ROWS ONLY
                 """, {
                     "keyword": keyword,

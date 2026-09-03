@@ -4975,3 +4975,237 @@ def test_rag_ranking_ignores_candidates_without_evidence():
     )
 
     assert ranked == []
+
+def test_rag_trusted_history_uses_final_category_assignment(
+    monkeypatch,
+):
+    import accounting_rag
+
+    executions = []
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(
+            self,
+            exc_type,
+            exc_value,
+            traceback,
+        ):
+            return False
+
+        def execute(self, sql, binds=None):
+            executions.append(
+                (sql, binds or {})
+            )
+
+        def fetchall(self):
+            sql = executions[-1][0]
+            normalized = " ".join(
+                sql.split()
+            ).upper()
+
+            if (
+                "FROM ACCOUNTING_CATEGORIES" in normalized
+                and "JOIN ACCOUNTING_CATEGORIES" not in normalized
+            ):
+                return [
+                    (
+                        3,
+                        "6100",
+                        "Software",
+                        "EXPENSE",
+                    )
+                ]
+
+            if ":VENDOR" in normalized:
+                return [
+                    (
+                        10,
+                        "Microsoft 365 subscription",
+                        "Microsoft",
+                        "Software",
+                    )
+                ]
+
+            return []
+
+    class FakeConnection:
+        def __init__(self):
+            self.closed = False
+
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            self.closed = True
+
+    connection = FakeConnection()
+
+    monkeypatch.setattr(
+        accounting_rag,
+        "get_connection",
+        lambda: connection,
+    )
+
+    context = accounting_rag.get_accounting_context(
+        description=None,
+        vendor="Microsoft",
+    )
+
+    assert context.examples == [
+        {
+            "transaction_id": 10,
+            "description": "Microsoft 365 subscription",
+            "vendor": "Microsoft",
+            "category": "Software",
+        }
+    ]
+
+    candidate_sql = next(
+        sql
+        for sql, binds in executions
+        if "vendor" in binds
+    )
+
+    normalized = " ".join(
+        candidate_sql.split()
+    ).upper()
+
+    assert (
+        "JOIN ACCOUNTING_CATEGORIES AC"
+        in normalized
+    )
+    assert (
+        "FT.ACCOUNTING_CATEGORY_ID = "
+        "AC.ACCOUNTING_CATEGORY_ID"
+        in normalized
+        or
+        "AC.ACCOUNTING_CATEGORY_ID = "
+        "FT.ACCOUNTING_CATEGORY_ID"
+        in normalized
+    )
+    assert (
+        "FT.ACCOUNTING_CATEGORY_ID IS NOT NULL"
+        in normalized
+    )
+    assert "AC.IS_ACTIVE = 'Y'" in normalized
+
+    # An AI suggestion alone is not the trust rule.
+    assert "AI_SUGGESTED_CATEGORY" not in normalized
+    assert "AI_CONFIDENCE" not in normalized
+
+    # Do not fall back to the old legacy text rule.
+    assert "CATEGORY IS NOT NULL" not in normalized
+
+    assert connection.closed is True
+
+
+def test_rag_trusted_history_description_query_uses_final_category(
+    monkeypatch,
+):
+    import accounting_rag
+
+    executions = []
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(
+            self,
+            exc_type,
+            exc_value,
+            traceback,
+        ):
+            return False
+
+        def execute(self, sql, binds=None):
+            executions.append(
+                (sql, binds or {})
+            )
+
+        def fetchall(self):
+            sql = executions[-1][0]
+            normalized = " ".join(
+                sql.split()
+            ).upper()
+
+            if (
+                "FROM ACCOUNTING_CATEGORIES" in normalized
+                and "JOIN ACCOUNTING_CATEGORIES" not in normalized
+            ):
+                return [
+                    (
+                        3,
+                        "6100",
+                        "Software",
+                        "EXPENSE",
+                    )
+                ]
+
+            if ":KEYWORD" in normalized:
+                return [
+                    (
+                        20,
+                        "Annual cloud software subscription",
+                        "Microsoft",
+                        "Software",
+                    )
+                ]
+
+            return []
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        accounting_rag,
+        "get_connection",
+        FakeConnection,
+    )
+
+    context = accounting_rag.get_accounting_context(
+        description="Cloud software subscription",
+        vendor=None,
+    )
+
+    assert [
+        item["transaction_id"]
+        for item in context.examples
+    ] == [20]
+
+    keyword_queries = [
+        sql
+        for sql, binds in executions
+        if "keyword" in binds
+    ]
+
+    assert keyword_queries
+
+    for sql in keyword_queries:
+        normalized = " ".join(
+            sql.split()
+        ).upper()
+
+        assert (
+            "JOIN ACCOUNTING_CATEGORIES AC"
+            in normalized
+        )
+        assert (
+            "FT.ACCOUNTING_CATEGORY_ID IS NOT NULL"
+            in normalized
+        )
+        assert (
+            "AC.ACCOUNT_NAME"
+            in normalized
+        )
+        assert (
+            "AI_SUGGESTED_CATEGORY"
+            not in normalized
+        )

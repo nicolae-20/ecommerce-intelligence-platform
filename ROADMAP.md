@@ -1661,39 +1661,91 @@ full regression:
 
 ---
 
-# CURRENT NEXT ACTION
+## Milestone 5.2 — Trusted Historical Evidence
 
-Continue Phase 5 with:
+Completed the trusted-history boundary for accounting RAG examples.
+
+Historical RAG examples now derive their category from the final
+`accounting_category_id` assignment rather than from legacy category text
+or unapproved AI suggestion fields.
+
+Implemented:
+
+* RAG historical examples require `accounting_category_id IS NOT NULL`
+* final category names are resolved through `accounting_categories`
+* inactive accounting categories are excluded
+* AI suggestions alone are never treated as trusted accounting history
+* `ai_confidence` is not used as an approval signal
+* manual human category assignments remain eligible
+* approved AI suggestions remain eligible after human approval
+* `audit_log` is not required for eligibility because manual assignments
+  do not currently create `CATEGORY_APPROVED` audit entries
+* deterministic ranking from Milestone 5.1 is preserved
+* retrieval remains read-only
+* no new dependencies or paid API requirements added
+
+Verified accounting trust contract:
+
+* `categorize_transaction_with_llm()` writes only AI suggestion/confidence
+* `approve_transaction_category()` converts an AI suggestion into a final
+  `accounting_category_id`
+* `assign_transaction_category()` directly creates a final
+  `accounting_category_id`
+* `ai_review_status` is a calculated review indicator, not an approval flag
+
+Validation:
 
 ```text
-Milestone 5.2 — Trusted Historical Evidence
+targeted RAG tests:
+8 passed
+
+full regression:
+167 passed
+0 failed
+0 errors
 ```
 
-Before implementing any filtering rule, inspect how the current accounting
-workflow records a human-approved or final categorization decision.
+### Definition of Done
 
-The key question is whether `category IS NOT NULL` is sufficient evidence
-that a historical transaction is trustworthy.
+* [x] AI suggestions are not treated as final accounting truth
+* [x] final category assignment is the trusted-history boundary
+* [x] manually assigned categories remain usable as historical evidence
+* [x] human-approved AI categories remain usable as historical evidence
+* [x] inactive categories are excluded
+* [x] deterministic ranking from Milestone 5.1 remains intact
+* [x] RAG retrieval remains read-only
+* [x] no audit-log dependency is incorrectly imposed on manual categories
+* [x] targeted tests pass
+* [x] full backend regression passes with 167 tests
 
-Milestone 5.2 should begin by inspecting:
+---
 
-* transaction categorization approval flow
-* `ai_review_status`
-* category assignment and approval functions
-* audit-log actions related to categorization
-* status fields that distinguish AI suggestions from human decisions
-* tests around approve/reject/manual category assignment
+# CURRENT NEXT ACTION
 
-Only after that inspection should the RAG layer be changed to prefer or
-restrict examples to trusted historical decisions.
+Continue Phase 5 by inspecting the remaining RAG quality surface before
+adding more retrieval complexity.
 
-Do not assume a database field means "human approved" until the write path
-and tests confirm it.
+The next candidate milestone is:
 
-The milestone must preserve:
+```text
+Milestone 5.3 — RAG Evidence Quality and Explainability
+```
 
-* human-controlled accounting writes
-* read-only RAG retrieval
+Before implementing 5.3:
+
+1. inspect how `AccountingContext.examples` is presented to the LLM
+2. inspect how investigation results expose historical evidence
+3. determine whether retrieval score/reason metadata should be surfaced
+4. determine whether contradictory historical examples are detectable
+5. identify whether additional deterministic safeguards improve accounting
+   usefulness without overlapping Phase 6 AI categorization quality
+
+Do not add embeddings, vector databases, or paid API dependencies unless a
+later measured need clearly justifies them.
+
+Preserve:
+
+* trusted final-category boundary from Milestone 5.2
 * deterministic ranking from Milestone 5.1
-* no paid API requirement
-* existing categorization safety boundaries
+* human-controlled accounting decisions
+* read-only investigation behavior

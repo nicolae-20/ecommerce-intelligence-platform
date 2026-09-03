@@ -1047,12 +1047,12 @@ Not yet complete.
 
 # 29. Immediate Next Milestone
 
-Milestone 5.1 — Deterministic RAG Example Ranking is complete.
+Milestone 5.2 — Trusted Historical Evidence is complete.
 
 Verified regression baseline:
 
 ```text
-165 passed
+167 passed
 0 failed
 0 errors
 ```
@@ -1060,33 +1060,75 @@ Verified regression baseline:
 Targeted RAG verification:
 
 ```text
-6 passed
+8 passed
 136 deselected
 ```
 
-Milestone 5.1 improved historical-example retrieval without introducing
-embeddings, vector databases, new external dependencies, or paid API usage.
+Trusted historical evidence now uses the final accounting-category
+relationship rather than unapproved AI suggestion state.
 
-The RAG layer now:
-
-* normalizes vendor and description text deterministically
-* extracts meaningful description tokens
-* ranks exact vendor matches as the strongest evidence
-* recognizes partial vendor matches
-* scores exact description matches
-* scores description token overlap
-* deduplicates transaction examples
-* rejects examples with no relevant evidence
-* returns at most five ranked examples
-* preserves the existing `AccountingContext` interface
-* remains read-only
-
-The next planned milestone is:
+The RAG trust boundary is:
 
 ```text
-Phase 5
-Milestone 5.2 — Trusted Historical Evidence
+financial_transactions.accounting_category_id IS NOT NULL
 ```
+
+with category names resolved through active rows in
+`accounting_categories`.
+
+This supports both:
+
+* human-approved AI category suggestions
+* manually assigned accounting categories
+
+while excluding AI suggestions that have not been accepted as final
+accounting state.
+
+Important architectural findings:
+
+* `ai_suggested_category` is advisory state only
+* `ai_confidence` is advisory state only
+* `ai_review_status` is calculated from suggestion state and confidence
+* `CATEGORY_APPROVED` audit entries exist for AI approvals
+* manual category assignment currently does not create the same audit action
+* therefore `audit_log` is not the universal trusted-history marker
+* `accounting_category_id` is the current common final-category signal
+
+# 30. Immediate Next Query Targets
+
+The next Phase 5 investigation should focus on RAG evidence quality and
+explainability.
+
+Inspect:
+
+* how ranked examples are serialized into the categorization prompt
+* how historical examples are shown in uncategorized investigation evidence
+* whether retrieval reason or score should be included
+* whether conflicting examples for the same vendor/description can be
+  detected deterministically
+* whether the current five-example limit is sufficient
+* whether useful improvements belong in Phase 5 or should remain for
+  Phase 6 categorization-quality work
+
+Avoid turning Phase 5 into a generic vector-search project.
+
+# 31. Next Milestone Definition of Done
+
+Milestone 5.3 should be defined only after inspecting the current evidence
+presentation and conflict behavior.
+
+Any implementation should preserve:
+
+* final-category trusted-history boundary
+* deterministic retrieval behavior
+* no accounting mutation
+* human review for consequential accounting decisions
+* compatibility with Demo Mode
+* no required paid OpenAI usage
+* targeted tests for any new evidence rule
+* full backend regression
+
+---
 
 # 30. Immediate Next Query Targets
 

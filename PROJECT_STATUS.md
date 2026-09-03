@@ -9,7 +9,7 @@ This document describes the current known implementation state.
 Snapshot baseline:
 
 ```text
-105 passed
+111 passed
 0 failed
 0 errors
 ```
@@ -663,7 +663,12 @@ existing high-confidence threshold remains `0.80`. Both bounds are exposed
 through the existing tool schema and use Oracle bind parameters. These filters
 remain distinct from finalized categorization and human-review semantics.
 
-Amount comparisons use transaction magnitude through `ABS(amount)` where implemented.
+Amount comparisons use transaction magnitude through `ABS(amount)`. Demo Mode
+recognizes `over`, `above`, `more than`, `at least`, `under`, `below`, `less
+than`, `at most`, and `between ... and ...`, with plain numbers, the euro
+symbol, or an `euros` suffix. The existing query layer provides inclusive
+minimum and maximum bounds, so all lower- and upper-bound phrases map to those
+inclusive semantics.
 
 This allows a negative expense such as:
 
@@ -787,7 +792,7 @@ Known deterministic function:
 _extract_date_range(...)
 ```
 
-Current implementation recognizes two explicit ISO dates.
+The implementation preserves explicit ISO date ranges and also recognizes:
 
 Example:
 
@@ -796,17 +801,18 @@ Example:
 2026-08-31
 ```
 
-Relative date language such as:
-
 ```text
-last month
 this month
+last month
+this year
 last 30 days
 ```
 
-is not yet considered complete.
-
-It belongs to future roadmap work.
+Relative dates use the system-local calendar date. `this month` and `this year`
+start at the applicable calendar boundary and end today; `last month` covers
+the complete previous calendar month; `last 30 days` includes today and the
+preceding 29 days. Resolution accepts an explicit reference date for
+deterministic boundary tests.
 
 ---
 
@@ -839,7 +845,7 @@ tests/test_api.py
 Current known baseline:
 
 ```text
-105 passed
+111 passed
 ```
 
 Current automated regression command:
@@ -998,8 +1004,7 @@ Still needs expansion beyond current filters.
 
 Planned additions include:
 
-* improved amount parsing
-* richer date expressions
+* combined-filter hardening
 
 ## Financial analytics AI tools
 
@@ -1053,12 +1058,11 @@ The next planned backend milestone is:
 
 ```text
 Phase 1
-Milestone 1.6 — Amount Parsing Improvements
+Milestone 1.8 — Combined Filter Hardening
 ```
 
-Expand deterministic Demo Mode amount parsing with explicit inclusive and
-exclusive comparison semantics while preserving the existing transaction query
-architecture.
+Verify that all supported transaction filters compose safely without duplicate
+tool routing or invalid Oracle binds.
 
 Primary files likely involved:
 
@@ -1077,11 +1081,7 @@ Potential API changes are not expected unless implementation inspection shows th
 After the next milestone, Demo Mode should be able to support queries conceptually similar to:
 
 ```text
-Show me expenses at least €50.
-```
-
-```text
-Show me transactions between €50 and €200.
+Show me posted Microsoft Software expenses over €50 between 2026-08-01 and 2026-08-31.
 ```
 
 The exact parser behavior should be deterministic and covered by tests.
@@ -1092,9 +1092,10 @@ The exact parser behavior should be deterministic and covered by tests.
 
 The immediate milestone is complete when:
 
-* amount comparison semantics are defined explicitly
-* supported currency and comparison phrases are parsed deterministically
-* combined transaction filters remain supported
+* all supported transaction filters compose safely
+* tool routing remains deduplicated
+* Oracle bind parameters remain valid
+* representative combined queries are covered by tests
 * regression tests pass
 * this file is updated with the new baseline
 * the corresponding roadmap milestone is marked complete

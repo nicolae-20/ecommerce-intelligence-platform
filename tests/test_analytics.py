@@ -2442,3 +2442,126 @@ def test_demo_assistant_filtered_transactions_with_dates():
 
     assert response.tool_name == "get_transactions"
     assert response.tool_result is not None
+
+
+def test_extract_amount_filters_supports_roadmap_phrases():
+    from ai_assistant import _extract_amount_filters
+
+    examples = {
+        "transactions over 50": (50.0, None),
+        "transactions above €50": (50.0, None),
+        "transactions more than €50": (50.0, None),
+        "transactions at least €50": (50.0, None),
+        "transactions under €100": (None, 100.0),
+        "transactions below 100": (None, 100.0),
+        "transactions less than 100 euros": (None, 100.0),
+        "transactions at most €100": (None, 100.0),
+        "transactions between €50 and €200": (50.0, 200.0),
+    }
+
+    for question, expected in examples.items():
+        assert _extract_amount_filters(question) == expected
+
+
+def test_extract_amount_filters_ignores_confidence_and_ambiguous_ranges():
+    from ai_assistant import _extract_amount_filters
+
+    assert _extract_amount_filters(
+        "Show me AI suggestions below 80% confidence."
+    ) == (None, None)
+    assert _extract_amount_filters(
+        "Show me transactions between a little and a lot."
+    ) == (None, None)
+
+
+def test_extract_relative_date_ranges_and_boundaries():
+    from datetime import date
+
+    from ai_assistant import _extract_date_range
+
+    reference_date = date(2026, 3, 15)
+
+    assert _extract_date_range("transactions this month", reference_date) == (
+        "2026-03-01",
+        "2026-03-15",
+    )
+    assert _extract_date_range("transactions last month", reference_date) == (
+        "2026-02-01",
+        "2026-02-28",
+    )
+    assert _extract_date_range("transactions this year", reference_date) == (
+        "2026-01-01",
+        "2026-03-15",
+    )
+    assert _extract_date_range("transactions last 30 days", reference_date) == (
+        "2026-02-14",
+        "2026-03-15",
+    )
+    assert _extract_date_range(
+        "transactions last month",
+        date(2026, 1, 5),
+    ) == ("2025-12-01", "2025-12-31")
+    assert _extract_date_range(
+        "transactions last month",
+        date(2024, 3, 1),
+    ) == ("2024-02-01", "2024-02-29")
+
+
+def test_extract_date_range_preserves_explicit_iso_dates():
+    from datetime import date
+
+    from ai_assistant import _extract_date_range
+
+    assert _extract_date_range(
+        "transactions between 2026-08-01 and 2026-08-31",
+        date(2030, 1, 1),
+    ) == ("2026-08-01", "2026-08-31")
+
+
+def test_amount_and_relative_date_queries_route_to_get_transactions():
+    from ai_assistant import _select_tools
+
+    assert _select_tools(
+        "Show me transactions between €50 and €200."
+    ) == ["get_transactions"]
+    assert _select_tools(
+        "Show me transactions last month."
+    ) == ["get_transactions"]
+
+
+def test_demo_assistant_combines_amount_and_relative_date_filters(monkeypatch):
+    from datetime import date
+
+    import ai_assistant
+
+    captured = {}
+
+    def fake_get_transactions(**arguments):
+        captured.update(arguments)
+        return []
+
+    monkeypatch.setattr(
+        ai_assistant,
+        "_current_local_date",
+        lambda: date(2026, 3, 15),
+    )
+    monkeypatch.setitem(
+        ai_assistant.TOOL_REGISTRY,
+        "get_transactions",
+        fake_get_transactions,
+    )
+
+    response = ai_assistant.ask_assistant(
+        "Show me posted Microsoft Software expenses between €50 and €200 "
+        "last month."
+    )
+
+    assert response.tool_name == "get_transactions"
+    assert captured["category"] == "Software"
+    assert captured["vendor"] == "Microsoft"
+    assert captured["transaction_type"] == "EXPENSE"
+    assert captured["min_amount"] == 50.0
+    assert captured["max_amount"] == 200.0
+    assert captured["status"] == "POSTED"
+    assert captured["start_date"] == "2026-02-01"
+    assert captured["end_date"] == "2026-02-28"

@@ -26,7 +26,7 @@ Do not mark a milestone complete until its Definition of Done has been satisfied
 Current verified test baseline:
 
 ```text
-105 passed
+111 passed
 0 failed
 0 errors
 ```
@@ -353,11 +353,11 @@ If current SQL only supports inclusive min/max filters, document and test that b
 
 ### Definition of Done
 
-* [ ] supported phrases documented
-* [ ] parser is deterministic
-* [ ] amount range supported
-* [ ] ambiguous input does not crash
-* [ ] tests pass
+* [x] supported phrases documented
+* [x] parser is deterministic
+* [x] amount range supported
+* [x] ambiguous input does not crash
+* [x] tests pass — 111 passed
 
 ---
 
@@ -384,10 +384,10 @@ Only add expressions that can be implemented reliably.
 
 ### Definition of Done
 
-* [ ] relative dates resolved deterministically
-* [ ] boundary dates tested
-* [ ] current ISO behavior preserved
-* [ ] tests pass
+* [x] relative dates resolved deterministically
+* [x] boundary dates tested
+* [x] current ISO behavior preserved
+* [x] tests pass — 111 passed
 
 ---
 
@@ -1304,7 +1304,7 @@ Start with:
 
 ```text
 Phase 1
-Milestone 1.6 — Amount Parsing Improvements
+Milestone 1.8 — Combined Filter Hardening
 ```
 
 Before implementation:
@@ -1312,9 +1312,9 @@ Before implementation:
 1. inspect `python/ai_tools.py`
 2. inspect `python/ai_assistant.py`
 3. inspect relevant tests in `tests/test_analytics.py`
-4. verify existing amount comparison semantics
+4. verify all supported filters and Oracle bind semantics
 5. run or confirm the current test baseline
-6. improve amount parsing incrementally
+6. harden representative combined-filter queries incrementally
 
 Do not continue automatically into several later milestones in one large change unless explicitly requested.
 

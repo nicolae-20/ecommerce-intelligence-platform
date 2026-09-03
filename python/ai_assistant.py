@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from typing import Any
 import re
 
@@ -98,6 +99,36 @@ def _extract_ai_confidence_filters(
     return None, None
 
 
+def _extract_amount_filters(
+    question: str,
+) -> tuple[float | None, float | None]:
+    question_lower = question.lower()
+    amount_pattern = (
+        r"€?\s*(\d+(?:\.\d+)?)(?!\d|\s*%)\s*(?:euros?)?"
+    )
+
+    range_match = re.search(
+        rf"\bbetween\s+{amount_pattern}\s+and\s+{amount_pattern}",
+        question_lower,
+    )
+
+    if range_match:
+        return float(range_match.group(1)), float(range_match.group(2))
+
+    minimum_match = re.search(
+        rf"\b(?:over|above|more than|at least)\s+{amount_pattern}",
+        question_lower,
+    )
+    maximum_match = re.search(
+        rf"\b(?:under|below|less than|at most)\s+{amount_pattern}",
+        question_lower,
+    )
+
+    minimum = float(minimum_match.group(1)) if minimum_match else None
+    maximum = float(maximum_match.group(1)) if maximum_match else None
+    return minimum, maximum
+
+
 def _select_tool(question: str) -> str | None:
     question_lower = question.lower()
 
@@ -141,6 +172,7 @@ def _select_tools(question: str) -> list[str]:
     min_ai_confidence, max_ai_confidence = _extract_ai_confidence_filters(
         question
     )
+    min_amount, max_amount = _extract_amount_filters(question)
     has_reconciliation_transaction_context = (
         reconciliation_status is not None
         and (
@@ -199,18 +231,26 @@ def _select_tools(question: str) -> list[str]:
         or categorization_state is not None
         or min_ai_confidence is not None
         or max_ai_confidence is not None
+        or min_amount is not None
+        or max_amount is not None
     )
 
-    has_date_range_request = (
+    has_explicit_date_range_request = (
         "transactions from" in question_lower
         or "transactions between" in question_lower
         or "transactions during" in question_lower
     )
+    has_relative_date_request = bool(
+        re.search(
+            r"\b(?:this month|last month|this year|last 30 days)\b",
+            question_lower,
+        )
+    )
 
-    if has_transaction_filters:
+    if has_transaction_filters or has_relative_date_request:
         tools.append("get_transactions")
 
-    elif has_date_range_request:
+    elif has_explicit_date_range_request:
         tools.append("get_transactions_by_date")
 
     return list(dict.fromkeys(tools))
@@ -235,16 +275,42 @@ def ask_assistant(question: str) -> AssistantResponse:
     )
 
 
-def _extract_date_range(question: str) -> tuple[str, str] | None:
+def _current_local_date() -> date:
+    return datetime.now().astimezone().date()
+
+
+def _extract_date_range(
+    question: str,
+    reference_date: date | None = None,
+) -> tuple[str, str] | None:
     matches = re.findall(
         r"\b(20\d{2}-\d{2}-\d{2})\b",
         question,
     )
 
-    if len(matches) < 2:
-        return None
+    if len(matches) >= 2:
+        return matches[0], matches[1]
 
-    return matches[0], matches[1]
+    question_lower = question.lower()
+    today = reference_date or _current_local_date()
+
+    if re.search(r"\blast 30 days\b", question_lower):
+        start_date = today - timedelta(days=29)
+        return start_date.isoformat(), today.isoformat()
+
+    if re.search(r"\blast month\b", question_lower):
+        current_month_start = today.replace(day=1)
+        previous_month_end = current_month_start - timedelta(days=1)
+        previous_month_start = previous_month_end.replace(day=1)
+        return previous_month_start.isoformat(), previous_month_end.isoformat()
+
+    if re.search(r"\bthis month\b", question_lower):
+        return today.replace(day=1).isoformat(), today.isoformat()
+
+    if re.search(r"\bthis year\b", question_lower):
+        return today.replace(month=1, day=1).isoformat(), today.isoformat()
+
+    return None
 
 
 def _extract_transaction_filters(
@@ -292,25 +358,9 @@ def _extract_transaction_filters(
         filters["max_ai_confidence"],
     ) = _extract_ai_confidence_filters(question)
 
-    min_match = re.search(
-        r"(?:over|above|more than|at least)\s*€?\s*(\d+(?:\.\d+)?)",
-        question_lower,
+    filters["min_amount"], filters["max_amount"] = (
+        _extract_amount_filters(question)
     )
-
-    if min_match:
-        filters["min_amount"] = float(
-            min_match.group(1)
-        )
-
-    max_match = re.search(
-        r"(?:under|below|less than|at most)\s*€?\s*(\d+(?:\.\d+)?)",
-        question_lower,
-    )
-
-    if max_match:
-        filters["max_amount"] = float(
-            max_match.group(1)
-        )
 
     if "pending" in question_lower:
         filters["status"] = "PENDING"

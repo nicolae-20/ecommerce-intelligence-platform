@@ -860,17 +860,76 @@ Manual verification covered:
 
 ## Milestone 4.2 — Structured Tool Results
 
-Where appropriate, render financial results as UI structures rather than raw JSON.
+Completed the first structured Assistant result flow without parsing
+natural-language output.
 
-Example transaction columns:
+The Assistant API already exposed:
 
-* date
-* description
-* vendor
-* amount
-* category
-* status
-* reconciliation status
+```text
+message
+tool_name
+tool_result
+```
+
+The frontend now consumes structured tool data directly for:
+
+```text
+get_transactions
+get_transactions_by_date
+```
+
+Implemented:
+
+* reusable `AssistantTransactionTable` React component
+* separate structured-result parsing and validation helpers
+* runtime validation of Assistant transaction objects
+* support for Demo Mode tool execution result shape
+* support for the current OpenAI Mode single-tool result shape
+* responsive horizontal scrolling for transaction tables
+* formatted EUR amounts
+* transaction metadata including ID and type
+* category, status, and reconciliation columns
+* empty structured-result handling
+* plain-text Assistant message retained as fallback and summary
+* structured result reset between Assistant requests
+* no accounting mutation or backend tool execution changes
+
+Manual verification covered:
+
+```text
+Show me Microsoft transactions.
+```
+
+and:
+
+```text
+Show me transactions from 2026-08-01 to 2026-09-30.
+```
+
+Both rendered structured transaction results.
+
+A non-transaction query:
+
+```text
+What's our bookkeeping summary?
+```
+
+continued to use the plain-text fallback.
+
+### Definition of Done
+
+* [x] current Assistant response contract inspected first
+* [x] structured frontend rendering uses backend `tool_result`
+* [x] no prose parsing is used
+* [x] transaction query results render structurally
+* [x] plain-text fallback remains available
+* [x] Milestone 4.1 loading and error handling remains intact
+* [x] no accounting mutation introduced
+* [x] reusable component created outside the large `App.tsx`
+* [x] runtime result validation added
+* [x] frontend lint passes with 0 warnings and 0 errors
+* [x] no TypeScript errors
+* [x] production build passes
 
 ---
 
@@ -1519,32 +1578,32 @@ Start with:
 
 ```text
 Phase 4
-Milestone 4.2 — Structured Tool Results
+Milestone 4.3 — Suggested Questions
 ```
 
 Goal:
 
-Render useful financial Assistant results as structured frontend UI where the
-backend already provides enough structure, instead of relying only on a plain
-text paragraph.
+Improve Assistant discoverability by presenting a small set of useful,
+clickable example questions that demonstrate the strongest bookkeeping and
+financial investigation capabilities.
 
-Before implementation:
+Preferred implementation:
 
-1. inspect the current Assistant response schema returned by the backend
-2. inspect whether tool name and structured result data already reach the API
-3. avoid changing the generic `_execute_tool()` backend boundary unnecessarily
-4. identify the smallest high-value result type for structured rendering
-5. prefer reusable Assistant result components over adding more logic directly
-   into the existing large `App.tsx`
-6. preserve the plain-text Assistant message as a safe fallback
-7. do not add accounting write actions to Assistant result cards
-8. run frontend lint and production build before closing the milestone
+* show 4 to 6 concise suggested questions near the Assistant input
+* clicking a suggestion should populate or directly submit the question
+* include examples for:
+  * bookkeeping summary
+  * transaction filtering
+  * AI review
+  * reconciliation investigation
+  * anomaly investigation
+  * financial analytics
+* keep loading and duplicate-submit protection from Milestone 4.1
+* keep structured-result rendering from Milestone 4.2
+* do not turn suggestions into a chatbot conversation/history feature
+* do not add accounting write actions
+* keep the implementation lightweight and portfolio-friendly
+* run frontend lint and production build before closing the milestone
 
-Initial structured-result candidates:
-
-* transaction lists
-* AI review queue results
-* anomaly investigation results
-* financial statistics
-
-Do not turn Milestone 4.2 into a full frontend redesign.
+After Milestone 4.3, Phase 4 can be closed and work should move to the next
+roadmap phase rather than expanding the Assistant frontend indefinitely.

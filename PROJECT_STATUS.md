@@ -1047,7 +1047,7 @@ Not yet complete.
 
 # 29. Immediate Next Milestone
 
-Milestone 4.1 — Core Assistant Interaction is complete.
+Milestone 4.2 — Structured Tool Results is complete.
 
 The verified backend regression baseline remains:
 
@@ -1057,8 +1057,8 @@ The verified backend regression baseline remains:
 0 errors
 ```
 
-Milestone 4.1 was frontend-only, so the backend suite did not need to be rerun
-after the previously verified 161-test baseline.
+Milestone 4.2 was frontend-only, so the previously verified backend baseline
+remains authoritative.
 
 Frontend verification:
 
@@ -1071,40 +1071,47 @@ npm run build
 passed
 ```
 
-The production build currently reports a non-blocking Vite chunk-size warning
-for the main JavaScript bundle. This is an optimization concern, not a
-Milestone 4.1 correctness failure.
+The existing non-blocking Vite chunk-size warning remains an optimization
+concern and does not affect Milestone 4.2 correctness.
 
-The Assistant frontend now supports:
+Assistant structured-result support now includes:
 
-* question input
-* button and Enter submission
-* request loading state
-* duplicate-submit prevention
-* disabled controls during requests
-* separate readable error state
-* HTTP/API error handling
-* response contract validation
-* multiline response rendering
-* recovery after backend/network failure
+* direct use of backend `tool_result`
+* runtime validation instead of unsafe casting
+* reusable structured-result helper module
+* reusable transaction table component
+* `get_transactions`
+* `get_transactions_by_date`
+* Demo Mode structured tool executions
+* current OpenAI Mode direct tool-result shape
+* plain-text fallback for unsupported result types
+* responsive transaction result presentation
+* no accounting state changes
 
-Manual Assistant checks successfully covered bookkeeping summary, AI review,
-financial anomaly detection, reconciliation investigation, and backend restart
-recovery.
+Manual verification confirmed that transaction queries render structured
+tables while non-transaction Assistant queries continue to render normally.
 
 The next planned milestone is:
 
 ```text
 Phase 4
-Milestone 4.2 — Structured Tool Results
+Milestone 4.3 — Suggested Questions
 ```
 
 # 30. Immediate Next Query Targets
 
-Milestone 4.2 should improve presentation for Assistant responses that contain
-financial structures.
+Milestone 4.3 should expose representative Assistant capabilities through a
+small set of suggested questions.
 
-High-value candidate queries include:
+Candidate suggestions:
+
+```text
+What's our bookkeeping summary?
+```
+
+```text
+Show me Microsoft transactions.
+```
 
 ```text
 Which transactions need AI review?
@@ -1115,27 +1122,24 @@ Which transactions look unusual?
 ```
 
 ```text
-Show me Microsoft transactions.
+Why is bank transaction 10 unmatched?
 ```
 
-```text
-What are our financial statistics?
-```
-
-Plain-text Assistant output should remain available as a fallback.
+Suggested questions should improve discoverability without creating a full
+chat history or conversation-management system.
 
 # 31. Next Milestone Definition of Done
 
-Milestone 4.2 — Structured Tool Results is complete when:
+Milestone 4.3 — Suggested Questions is complete when:
 
-* the current Assistant API response contract has been inspected first
-* at least one high-value financial result is rendered structurally
-* structured rendering is based on backend data rather than parsing prose
-* plain-text response rendering remains a fallback
-* loading and error behavior from Milestone 4.1 remains intact
-* no accounting mutation is introduced by result rendering
-* frontend code remains maintainable and avoids unnecessary duplication
-* frontend lint passes
+* a concise set of useful Assistant suggestions is visible
+* suggestions cover multiple meaningful financial capabilities
+* selecting a suggestion works predictably
+* loading and duplicate-submit protection remains intact
+* structured transaction results from Milestone 4.2 still work
+* plain-text fallback still works
+* no accounting mutation is introduced
+* frontend lint passes with 0 warnings and 0 errors
 * no TypeScript errors remain
 * production build passes
 * `PROJECT_STATUS.md` and `ROADMAP.md` are updated after verification

@@ -10,6 +10,11 @@ import {
 } from "recharts"
 
 import "./App.css"
+import { AssistantTransactionTable } from "./components/AssistantTransactionTable"
+import {
+  extractAssistantTransactions,
+  type AssistantTransaction,
+} from "./components/assistantResults"
 
 type Customer = {
   customer_name: string
@@ -129,6 +134,8 @@ function App() {
   const [assistantQuestion, setAssistantQuestion] = useState("")
   const [assistantResponse, setAssistantResponse] = useState("")
   const [assistantError, setAssistantError] = useState("")
+  const [assistantTransactions, setAssistantTransactions] =
+    useState<AssistantTransaction[] | null>(null)
   const [assistantLoading, setAssistantLoading] = useState(false)
 
   useEffect(() => {
@@ -606,6 +613,7 @@ const handleAskAssistant = async () => {
   setAssistantLoading(true)
   setAssistantError("")
   setAssistantResponse("")
+  setAssistantTransactions(null)
 
   try {
     const response = await fetch(
@@ -656,6 +664,23 @@ const handleAskAssistant = async () => {
     }
 
     setAssistantResponse(data.message)
+
+    const toolName =
+      "tool_name" in data
+        ? data.tool_name
+        : null
+
+    const toolResult =
+      "tool_result" in data
+        ? data.tool_result
+        : null
+
+    setAssistantTransactions(
+      extractAssistantTransactions(
+        toolName,
+        toolResult,
+      )
+    )
   } catch (error) {
     console.error("AI Assistant error:", error)
 
@@ -805,13 +830,23 @@ const handleAskAssistant = async () => {
     </div>
   )}
 
+  {assistantTransactions !== null && (
+    <AssistantTransactionTable
+      transactions={assistantTransactions}
+    />
+  )}
+
   {assistantResponse && (
     <div
       className="assistant-response"
       role="status"
       aria-live="polite"
     >
-      <strong>Assistant</strong>
+      <strong>
+        {assistantTransactions !== null
+          ? "Assistant summary"
+          : "Assistant"}
+      </strong>
       <p style={{ whiteSpace: "pre-wrap" }}>
         {assistantResponse}
       </p>

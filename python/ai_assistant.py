@@ -58,6 +58,18 @@ def _extract_reconciliation_status(question: str) -> str | None:
     return None
 
 
+def _extract_categorization_state(question: str) -> str | None:
+    question_lower = question.lower()
+
+    if re.search(r"\buncategorized\b", question_lower):
+        return "UNCATEGORIZED"
+
+    if re.search(r"\bcategorized\b", question_lower):
+        return "CATEGORIZED"
+
+    return None
+
+
 def _select_tool(question: str) -> str | None:
     question_lower = question.lower()
 
@@ -97,6 +109,7 @@ def _select_tools(question: str) -> list[str]:
     vendor = _extract_known_vendor(question)
     transaction_type = _extract_transaction_type(question)
     reconciliation_status = _extract_reconciliation_status(question)
+    categorization_state = _extract_categorization_state(question)
     has_reconciliation_transaction_context = (
         reconciliation_status is not None
         and (
@@ -152,6 +165,7 @@ def _select_tools(question: str) -> list[str]:
         or vendor is not None
         or transaction_type is not None
         or has_reconciliation_transaction_context
+        or categorization_state is not None
     )
 
     has_date_range_request = (
@@ -210,6 +224,7 @@ def _extract_transaction_filters(
     "vendor": None,
     "transaction_type": None,
     "reconciliation_status": None,
+    "categorization_state": None,
     "min_amount": None,
     "max_amount": None,
     "status": None,
@@ -236,6 +251,7 @@ def _extract_transaction_filters(
     filters["vendor"] = _extract_known_vendor(question)
     filters["transaction_type"] = _extract_transaction_type(question)
     filters["reconciliation_status"] = _extract_reconciliation_status(question)
+    filters["categorization_state"] = _extract_categorization_state(question)
 
     min_match = re.search(
         r"(?:over|above|more than|at least)\s*€?\s*(\d+(?:\.\d+)?)",

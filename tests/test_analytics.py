@@ -1453,6 +1453,7 @@ def test_ai_tool_definitions():
     assert "vendor" in transaction_tool["parameters"]["properties"]
     assert "transaction_type" in transaction_tool["parameters"]["properties"]
     assert "reconciliation_status" in transaction_tool["parameters"]["properties"]
+    assert "categorization_state" in transaction_tool["parameters"]["properties"]
     assert "min_amount" in transaction_tool["parameters"]["properties"]
     assert "max_amount" in transaction_tool["parameters"]["properties"]
     assert "status" in transaction_tool["parameters"]["properties"]
@@ -1968,6 +1969,19 @@ def test_tool_get_transactions_filters_by_reconciliation_status():
         assert transaction["reconciliation_status"] == "UNMATCHED"
 
 
+def test_tool_get_transactions_filters_by_categorization_state():
+    from ai_tools import tool_get_transactions
+
+    result = tool_get_transactions(
+        categorization_state="UNCATEGORIZED",
+    )
+
+    assert result
+
+    for transaction in result:
+        assert transaction["category"] is None
+
+
 def test_tool_get_transactions_binds_optional_filters(monkeypatch):
     import ai_tools
 
@@ -2004,18 +2018,21 @@ def test_tool_get_transactions_binds_optional_filters(monkeypatch):
         vendor="office depot",
         transaction_type="EXPENSE",
         reconciliation_status="MATCHED",
+        categorization_state="CATEGORIZED",
     )
 
     assert result == []
     assert ":vendor" in captured["statement"]
     assert ":transaction_type" in captured["statement"]
     assert ":reconciliation_status" in captured["statement"]
+    assert ":categorization_state" in captured["statement"]
     assert "office depot" not in captured["statement"]
     assert "EXPENSE" not in captured["statement"]
     assert "MATCHED" not in captured["statement"]
     assert captured["parameters"]["vendor"] == "office depot"
     assert captured["parameters"]["transaction_type"] == "EXPENSE"
     assert captured["parameters"]["reconciliation_status"] == "MATCHED"
+    assert captured["parameters"]["categorization_state"] == "CATEGORIZED"
     assert captured["closed"] is True
 
 
@@ -2027,6 +2044,7 @@ def test_tool_get_transactions_combines_vendor_with_existing_filters():
         vendor="office depot",
         transaction_type="EXPENSE",
         reconciliation_status="MATCHED",
+        categorization_state="CATEGORIZED",
         min_amount=80,
         max_amount=90,
         status="POSTED",
@@ -2041,6 +2059,7 @@ def test_tool_get_transactions_combines_vendor_with_existing_filters():
         assert "office depot" in transaction["vendor"].lower()
         assert transaction["transaction_type"] == "EXPENSE"
         assert transaction["reconciliation_status"] == "MATCHED"
+        assert transaction["category"] is not None
         assert 80 <= abs(float(transaction["amount"])) <= 90
         assert transaction["status"] == "POSTED"
 
@@ -2057,6 +2076,7 @@ def test_extract_transaction_filters():
         "vendor": None,
         "transaction_type": "EXPENSE",
         "reconciliation_status": None,
+        "categorization_state": None,
         "min_amount": 50.0,
         "max_amount": None,
         "status": None,
@@ -2113,6 +2133,20 @@ def test_extract_transaction_filters_with_reconciliation_statuses():
 
     assert unmatched["reconciliation_status"] == "UNMATCHED"
     assert matched["reconciliation_status"] == "MATCHED"
+
+
+def test_extract_transaction_filters_with_categorization_states():
+    from ai_assistant import _extract_transaction_filters
+
+    uncategorized = _extract_transaction_filters(
+        "Show me uncategorized transactions."
+    )
+    categorized = _extract_transaction_filters(
+        "Show me categorized Microsoft expenses."
+    )
+
+    assert uncategorized["categorization_state"] == "UNCATEGORIZED"
+    assert categorized["categorization_state"] == "CATEGORIZED"
 
 
 def test_demo_assistant_vendor_only_transactions():
@@ -2242,6 +2276,45 @@ def test_demo_assistant_filters_by_reconciliation_status(monkeypatch):
     assert captured["reconciliation_status"] == "UNMATCHED"
 
 
+def test_demo_assistant_filters_by_categorization_state(monkeypatch):
+    from ai_assistant import TOOL_REGISTRY, ask_assistant
+
+    captured = {}
+
+    def fake_get_transactions(**arguments):
+        captured.update(arguments)
+        return [
+            {
+                "transaction_id": 3,
+                "transaction_date": "2026-08-03",
+                "transaction_type": "EXPENSE",
+                "description": "Microsoft subscription",
+                "amount": -50,
+                "category": "Software",
+                "vendor": "Microsoft",
+                "ai_suggested_category": None,
+                "ai_confidence": None,
+                "reconciliation_status": "MATCHED",
+                "status": "POSTED",
+            }
+        ]
+
+    monkeypatch.setitem(
+        TOOL_REGISTRY,
+        "get_transactions",
+        fake_get_transactions,
+    )
+
+    response = ask_assistant(
+        "Show me categorized Microsoft expenses."
+    )
+
+    assert response.tool_name == "get_transactions"
+    assert captured["vendor"] == "Microsoft"
+    assert captured["transaction_type"] == "EXPENSE"
+    assert captured["categorization_state"] == "CATEGORIZED"
+
+
 def test_demo_assistant_filtered_transactions():
     from ai_assistant import ask_assistant
 
@@ -2268,6 +2341,7 @@ def test_extract_transaction_filters_with_date_range():
         "vendor": None,
         "transaction_type": "EXPENSE",
         "reconciliation_status": None,
+        "categorization_state": None,
         "min_amount": 50.0,
         "max_amount": None,
         "status": None,

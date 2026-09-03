@@ -9,7 +9,7 @@ This document describes the current known implementation state.
 Snapshot baseline:
 
 ```text
-99 passed
+102 passed
 0 failed
 0 errors
 ```
@@ -613,6 +613,7 @@ category
 vendor
 transaction_type
 reconciliation_status
+categorization_state
 min_amount
 max_amount
 status
@@ -642,6 +643,17 @@ UNMATCHED
 It is exposed through the same tool schema and uses its own Oracle bind
 parameter. Bank-review match types such as `EXACT_MATCH`, `POSSIBLE_MATCH`, and
 `NO_MATCH` retain their existing semantics.
+
+Categorization state filtering supports:
+
+```text
+CATEGORIZED
+UNCATEGORIZED
+```
+
+This is derived from `category IS NOT NULL` and `category IS NULL`; no fake
+accounting category is introduced. The state is exposed through the existing
+tool schema and selected through an Oracle bind parameter.
 
 Amount comparisons use transaction magnitude through `ABS(amount)` where implemented.
 
@@ -683,6 +695,14 @@ Show me Software expenses over €50 between 2026-08-01 and 2026-08-31
 Show me unmatched Microsoft expenses
 ```
 
+```text
+Show me uncategorized transactions
+```
+
+```text
+Show me categorized Microsoft expenses
+```
+
 ---
 
 # 21. Transaction Filter Parsing
@@ -700,6 +720,7 @@ category
 vendor
 transaction_type
 reconciliation_status
+categorization_state
 min_amount
 max_amount
 status
@@ -734,6 +755,11 @@ Known reconciliation statuses recognized deterministically include:
 
 * MATCHED
 * UNMATCHED
+
+Known categorization states recognized deterministically include:
+
+* CATEGORIZED
+* UNCATEGORIZED
 
 Vendor matching in the SQL tool is case-insensitive and supports partial names.
 
@@ -803,7 +829,7 @@ tests/test_api.py
 Current known baseline:
 
 ```text
-99 passed
+102 passed
 ```
 
 Current automated regression command:
@@ -962,7 +988,6 @@ Still needs expansion beyond current filters.
 
 Planned additions include:
 
-* categorized / uncategorized
 * AI confidence filtering
 * improved amount parsing
 * richer date expressions
@@ -1019,11 +1044,11 @@ The next planned backend milestone is:
 
 ```text
 Phase 1
-Milestone 1.4 — Categorization State Filtering
+Milestone 1.5 — AI Confidence Filtering
 ```
 
-Extend transaction querying and deterministic Demo Mode parsing with
-categorized and uncategorized state based on category nullability.
+Extend transaction querying and deterministic Demo Mode parsing with explicit
+AI suggestion confidence thresholds while preserving human-review semantics.
 
 Primary files likely involved:
 
@@ -1042,11 +1067,11 @@ Potential API changes are not expected unless implementation inspection shows th
 After the next milestone, Demo Mode should be able to support queries conceptually similar to:
 
 ```text
-Show me uncategorized transactions.
+Show me AI suggestions below 80% confidence.
 ```
 
 ```text
-Show me categorized Microsoft expenses.
+Show me high-confidence uncategorized transactions.
 ```
 
 The exact parser behavior should be deterministic and covered by tests.
@@ -1057,10 +1082,10 @@ The exact parser behavior should be deterministic and covered by tests.
 
 The immediate milestone is complete when:
 
-* the query layer supports categorized state
-* SQL null semantics are correct
-* Demo Mode supports categorized and uncategorized language
-* categorization state composes with existing transaction filters
+* confidence filtering is implemented
+* percentage parsing is tested
+* AI suggestion confidence remains distinct from finalized category state
+* human-review semantics are preserved
 * regression tests pass
 * this file is updated with the new baseline
 * the corresponding roadmap milestone is marked complete

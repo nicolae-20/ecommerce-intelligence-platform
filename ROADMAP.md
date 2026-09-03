@@ -26,7 +26,7 @@ Do not mark a milestone complete until its Definition of Done has been satisfied
 Current verified test baseline:
 
 ```text
-99 passed
+102 passed
 0 failed
 0 errors
 ```
@@ -280,10 +280,10 @@ Do not create fake accounting categories to represent uncategorized state.
 
 ### Definition of Done
 
-* [ ] query layer supports categorized state
-* [ ] SQL semantics are correct
-* [ ] Demo parser supports natural language
-* [ ] tests pass
+* [x] query layer supports categorized state
+* [x] SQL semantics are correct
+* [x] Demo parser supports natural language
+* [x] tests pass — 102 passed
 
 ---
 
@@ -1304,7 +1304,7 @@ Start with:
 
 ```text
 Phase 1
-Milestone 1.4 — Categorization State Filtering
+Milestone 1.5 — AI Confidence Filtering
 ```
 
 Before implementation:
@@ -1312,9 +1312,9 @@ Before implementation:
 1. inspect `python/ai_tools.py`
 2. inspect `python/ai_assistant.py`
 3. inspect relevant tests in `tests/test_analytics.py`
-4. verify existing category-null semantics in Oracle
+4. verify existing AI confidence and review-threshold semantics
 5. run or confirm the current test baseline
-6. implement categorization state filtering incrementally
+6. implement AI confidence filtering incrementally
 
 Do not continue automatically into several later milestones in one large change unless explicitly requested.
 

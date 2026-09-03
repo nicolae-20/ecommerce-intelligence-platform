@@ -83,6 +83,7 @@ def tool_get_transactions(
     vendor: str | None = None,
     transaction_type: str | None = None,
     reconciliation_status: str | None = None,
+    categorization_state: str | None = None,
     min_amount: float | None = None,
     max_amount: float | None = None,
     status: str | None = None,
@@ -122,6 +123,13 @@ def tool_get_transactions(
                     OR reconciliation_status = :reconciliation_status
                 )
                 AND (
+                    :categorization_state IS NULL
+                    OR :categorization_state = CASE
+                        WHEN category IS NULL THEN 'UNCATEGORIZED'
+                        ELSE 'CATEGORIZED'
+                    END
+                )
+                AND (
                     :min_amount IS NULL
                     OR ABS(amount) >= :min_amount
                 )
@@ -153,6 +161,7 @@ AND (
                 "vendor": vendor,
                 "transaction_type": transaction_type,
                 "reconciliation_status": reconciliation_status,
+                "categorization_state": categorization_state,
                 "min_amount": min_amount,
                 "max_amount": max_amount,
                 "status": status,
@@ -279,8 +288,8 @@ TOOL_DEFINITIONS = [
     "description": (
         "Get financial transactions using optional filters "
         "for accounting category, vendor, transaction type, "
-        "reconciliation status, absolute transaction amount, "
-        "and transaction status."
+        "reconciliation status, categorization state, absolute "
+        "transaction amount, and transaction status."
     ),
     "parameters": {
         "type": "object",
@@ -312,6 +321,14 @@ TOOL_DEFINITIONS = [
                 "description": (
                     "Transaction reconciliation status: "
                     "MATCHED or UNMATCHED."
+                ),
+            },
+            "categorization_state": {
+                "type": ["string", "null"],
+                "enum": ["CATEGORIZED", "UNCATEGORIZED", None],
+                "description": (
+                    "Whether a transaction has an assigned category: "
+                    "CATEGORIZED or UNCATEGORIZED."
                 ),
             },
             "min_amount": {
@@ -346,6 +363,7 @@ TOOL_DEFINITIONS = [
             "vendor",
             "transaction_type",
             "reconciliation_status",
+            "categorization_state",
             "min_amount",
             "max_amount",
             "status",

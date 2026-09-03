@@ -1463,6 +1463,7 @@ def test_ai_tool_registry():
 
     assert "get_bookkeeping_summary" in TOOL_REGISTRY
     assert "get_ai_review_queue" in TOOL_REGISTRY
+    assert "investigate_uncategorized_transaction" in TOOL_REGISTRY
     assert "get_reconciliation_review" in TOOL_REGISTRY
     assert "get_audit_log" in TOOL_REGISTRY
     assert "get_spending_by_category" in TOOL_REGISTRY
@@ -1473,6 +1474,9 @@ def test_ai_tool_registry():
 
     assert callable(TOOL_REGISTRY["get_bookkeeping_summary"])
     assert callable(TOOL_REGISTRY["get_ai_review_queue"])
+    assert callable(
+        TOOL_REGISTRY["investigate_uncategorized_transaction"]
+    )
     assert callable(TOOL_REGISTRY["get_reconciliation_review"])
     assert callable(TOOL_REGISTRY["get_audit_log"])
     assert callable(TOOL_REGISTRY["get_spending_by_category"])
@@ -1493,6 +1497,7 @@ def test_ai_tool_definitions():
     assert names == {
         "get_bookkeeping_summary",
         "get_ai_review_queue",
+        "investigate_uncategorized_transaction",
         "get_reconciliation_review",
         "get_audit_log",
         "get_spending_by_category",
@@ -3693,3 +3698,461 @@ def test_demo_assistant_executes_financial_statistics_generically(
         "end_date": "2026-09-03",
     }
     assert "Average posted expense: €75.00" in response.message
+
+
+def test_uncategorized_investigation_read_only_contract(monkeypatch):
+    import accounting_rag
+    import analytics
+    import llm_categorizer
+
+    from accounting_rag import AccountingContext
+    from llm_categorizer import CategorySuggestion
+
+    captured = {}
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, sql, binds):
+            captured["sql"] = sql
+            captured["binds"] = binds
+
+        def fetchone(self):
+            return (
+                7,
+                "2026-09-01",
+                "EXPENSE",
+                "Microsoft 365 subscription",
+                -120.0,
+                None,
+                "Microsoft",
+                "Software",
+                0.70,
+                "UNMATCHED",
+                "POSTED",
+            )
+
+    class FakeConnection:
+        def __init__(self):
+            self.closed = False
+            self.commit_called = False
+
+        def cursor(self):
+            return FakeCursor()
+
+        def commit(self):
+            self.commit_called = True
+            raise AssertionError(
+                "Read-only investigation must not commit"
+            )
+
+        def close(self):
+            self.closed = True
+
+    connection = FakeConnection()
+
+    context = AccountingContext(
+        categories=[
+            {
+                "category_id": 3,
+                "account_code": "6100",
+                "account_name": "Software",
+                "account_type": "EXPENSE",
+            },
+            {
+                "category_id": 4,
+                "account_code": "6200",
+                "account_name": "Office Supplies",
+                "account_type": "EXPENSE",
+            },
+        ],
+        examples=[
+            {
+                "transaction_id": 2,
+                "description": "Microsoft subscription",
+                "vendor": "Microsoft",
+                "category": "Software",
+            },
+        ],
+    )
+
+    monkeypatch.setattr(
+        analytics,
+        "get_connection",
+        lambda: connection,
+    )
+    monkeypatch.setattr(
+        accounting_rag,
+        "get_accounting_context",
+        lambda description, vendor: context,
+    )
+    monkeypatch.setattr(
+        llm_categorizer,
+        "suggest_transaction_category",
+        lambda **kwargs: CategorySuggestion(
+            category="Software",
+            confidence=0.95,
+        ),
+    )
+
+    result = analytics.investigate_uncategorized_transaction(
+        transaction_id=7,
+    )
+
+    normalized_sql = " ".join(captured["sql"].split()).upper()
+
+    assert "FROM FINANCIAL_TRANSACTIONS" in normalized_sql
+    assert "WHERE TRANSACTION_ID = :TRANSACTION_ID" in normalized_sql
+    assert "UPDATE " not in normalized_sql
+    assert "INSERT " not in normalized_sql
+    assert "DELETE " not in normalized_sql
+
+    assert captured["binds"] == {
+        "transaction_id": 7,
+    }
+
+    assert result["transaction"]["transaction_id"] == 7
+    assert result["transaction"]["category"] is None
+    assert result["investigation_status"] == "RECOMMENDATION_READY"
+
+    assert result["current_ai_suggestion"] == {
+        "category": "Software",
+        "confidence": 0.70,
+    }
+
+    assert result["recommendation"]["category"] == "Software"
+    assert result["recommendation"]["confidence"] == 0.95
+    assert result["recommendation"]["high_confidence"] is True
+    assert result["requires_human_review"] is True
+
+    assert result["evidence"]["supporting_example_count"] == 1
+    assert result["evidence"]["historical_examples"][0][
+        "transaction_id"
+    ] == 2
+
+    assert connection.commit_called is False
+    assert connection.closed is True
+
+
+def test_uncategorized_investigation_rejects_invalid_demo_category(
+    monkeypatch,
+):
+    import accounting_rag
+    import analytics
+    import llm_categorizer
+    import pytest
+
+    from accounting_rag import AccountingContext
+    from llm_categorizer import CategorySuggestion
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, sql, binds):
+            pass
+
+        def fetchone(self):
+            return (
+                7,
+                "2026-09-01",
+                "EXPENSE",
+                "Unknown expense",
+                -50.0,
+                None,
+                "Unknown Vendor",
+                None,
+                None,
+                "UNMATCHED",
+                "POSTED",
+            )
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            pass
+
+    context = AccountingContext(
+        categories=[
+            {
+                "category_id": 3,
+                "account_code": "6100",
+                "account_name": "Software",
+                "account_type": "EXPENSE",
+            },
+        ],
+        examples=[],
+    )
+
+    monkeypatch.setattr(
+        analytics,
+        "get_connection",
+        lambda: FakeConnection(),
+    )
+    monkeypatch.setattr(
+        accounting_rag,
+        "get_accounting_context",
+        lambda description, vendor: context,
+    )
+    monkeypatch.setattr(
+        llm_categorizer,
+        "suggest_transaction_category",
+        lambda **kwargs: CategorySuggestion(
+            category="Office Supplies",
+            confidence=0.10,
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Invalid accounting category returned by AI",
+    ):
+        analytics.investigate_uncategorized_transaction(
+            transaction_id=7,
+        )
+
+
+def test_uncategorized_investigation_handles_categorized_transaction(
+    monkeypatch,
+):
+    import analytics
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, sql, binds):
+            pass
+
+        def fetchone(self):
+            return (
+                8,
+                "2026-09-01",
+                "EXPENSE",
+                "Microsoft 365",
+                -120.0,
+                "Software",
+                "Microsoft",
+                "Software",
+                0.95,
+                "MATCHED",
+                "POSTED",
+            )
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        analytics,
+        "get_connection",
+        lambda: FakeConnection(),
+    )
+
+    result = analytics.investigate_uncategorized_transaction(
+        transaction_id=8,
+    )
+
+    assert result["investigation_status"] == "ALREADY_CATEGORIZED"
+    assert result["transaction"]["category"] == "Software"
+    assert result["recommendation"] is None
+    assert result["requires_human_review"] is False
+
+
+def test_uncategorized_investigation_handles_missing_transaction(
+    monkeypatch,
+):
+    import analytics
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, sql, binds):
+            pass
+
+        def fetchone(self):
+            return None
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        analytics,
+        "get_connection",
+        lambda: FakeConnection(),
+    )
+
+    assert (
+        analytics.investigate_uncategorized_transaction(
+            transaction_id=999999,
+        )
+        is None
+    )
+
+
+def test_uncategorized_investigation_tool_schema():
+    from ai_tools import TOOL_DEFINITIONS, TOOL_REGISTRY
+
+    assert "investigate_uncategorized_transaction" in TOOL_REGISTRY
+
+    tool = next(
+        item
+        for item in TOOL_DEFINITIONS
+        if item["name"] == "investigate_uncategorized_transaction"
+    )
+
+    assert tool["type"] == "function"
+    assert set(tool["parameters"]["properties"]) == {
+        "transaction_id",
+    }
+    assert tool["parameters"]["required"] == ["transaction_id"]
+    assert tool["parameters"]["properties"]["transaction_id"][
+        "minimum"
+    ] == 1
+    assert tool["parameters"]["additionalProperties"] is False
+
+
+def test_uncategorized_investigation_demo_routing():
+    from ai_assistant import _select_tools
+
+    questions = [
+        "Why is transaction 7 uncategorized?",
+        "What category would you recommend for transaction 7 and why?",
+        (
+            "What evidence supports the recommendation "
+            "for transaction 7?"
+        ),
+    ]
+
+    for question in questions:
+        assert _select_tools(question) == [
+            "investigate_uncategorized_transaction"
+        ]
+
+
+def test_uncategorized_investigation_formatter():
+    from ai_assistant import _format_uncategorized_investigation
+
+    result = {
+        "transaction": {
+            "transaction_id": 7,
+            "transaction_date": "2026-09-01",
+            "transaction_type": "EXPENSE",
+            "description": "Microsoft 365 subscription",
+            "amount": -120,
+            "category": None,
+            "vendor": "Microsoft",
+            "reconciliation_status": "UNMATCHED",
+            "status": "POSTED",
+        },
+        "investigation_status": "RECOMMENDATION_READY",
+        "current_ai_suggestion": {
+            "category": "Software",
+            "confidence": 0.70,
+        },
+        "evidence": {
+            "available_categories": [
+                "Software",
+                "Office Supplies",
+            ],
+            "historical_examples": [],
+            "supporting_example_count": 1,
+        },
+        "recommendation": {
+            "category": "Software",
+            "confidence": 0.95,
+            "high_confidence": True,
+            "rationale": (
+                "1 confirmed historical example supports Software."
+            ),
+        },
+        "requires_human_review": True,
+    }
+
+    message = _format_uncategorized_investigation(result)
+
+    assert "Transaction 7 remains uncategorized" in message
+    assert "€120.00" in message
+    assert "Stored AI suggestion: Software at 70%" in message
+    assert "not approved accounting truth" in message
+    assert "Read-only recommendation: Software at 95%" in message
+    assert "Supporting confirmed examples: 1" in message
+    assert "requires human review and approval" in message
+
+
+def test_demo_assistant_executes_uncategorized_investigation_generically(
+    monkeypatch,
+):
+    import ai_assistant
+
+    calls = []
+
+    def fake_investigation(**arguments):
+        calls.append(arguments)
+
+        return {
+            "transaction": {
+                "transaction_id": 7,
+                "description": "Microsoft 365",
+                "vendor": "Microsoft",
+                "amount": -120,
+                "category": None,
+            },
+            "investigation_status": "RECOMMENDATION_READY",
+            "current_ai_suggestion": None,
+            "evidence": {
+                "available_categories": ["Software"],
+                "historical_examples": [],
+                "supporting_example_count": 0,
+            },
+            "recommendation": {
+                "category": "Software",
+                "confidence": 0.95,
+                "high_confidence": True,
+                "rationale": "Vendor and description evidence.",
+            },
+            "requires_human_review": True,
+        }
+
+    monkeypatch.setitem(
+        ai_assistant.TOOL_REGISTRY,
+        "investigate_uncategorized_transaction",
+        fake_investigation,
+    )
+
+    response = ai_assistant.ask_assistant(
+        "Why is transaction 7 uncategorized?"
+    )
+
+    assert response.tool_name == (
+        "investigate_uncategorized_transaction"
+    )
+    assert calls == [
+        {
+            "transaction_id": 7,
+        }
+    ]
+    assert "Read-only recommendation: Software" in response.message

@@ -1047,67 +1047,82 @@ Not yet complete.
 
 # 29. Immediate Next Milestone
 
-Phase 2 — Financial Analytics is complete.
+Milestone 3.1 — Uncategorized Transaction Investigation is complete.
 
 The current verified backend baseline is:
 
 ```text
-138 passed
+146 passed
 0 failed
 0 errors
 ```
+
+Milestone 3.1 added a read-only investigation path that:
+
+* retrieves one financial transaction by ID
+* distinguishes uncategorized, categorized, and missing transactions
+* retrieves active accounting categories and confirmed historical examples
+* uses the existing accounting RAG context
+* generates a read-only category recommendation
+* validates that recommendation against the active Chart of Accounts
+* distinguishes stored AI suggestions from approved accounting truth
+* requires human review before final categorization
+* performs no category approval, accounting write, or commit
 
 The next planned backend milestone is:
 
 ```text
 Phase 3
-Milestone 3.1 — Uncategorized Transaction Investigation
+Milestone 3.2 — Reconciliation Investigation
 ```
 
-The goal is to use the existing read-only financial and accounting-context
-layers to investigate uncategorized transactions.
+The goal is to explain reconciliation problems using read-only evidence rather
+than silently changing reconciliation state.
 
-The workflow should:
+The investigation should be able to reason over:
 
-* identify an uncategorized transaction
-* retrieve relevant accounting context
-* inspect vendor and historical information where useful
-* produce an evidence-based category recommendation
-* leave the final accounting decision to a human
+* bank transaction amount
+* transaction date
+* descriptions
+* vendor or memo context where available
+* possible linked financial transaction
+* match type
+* match confidence
+* why an item remains unmatched
 
-No automatic category approval or final accounting write is part of this
-milestone.
+Human review remains the authority for important reconciliation decisions.
 
 # 30. Immediate Next Query Targets
 
-Milestone 3.1 should support investigation questions conceptually similar to:
+Milestone 3.2 should support investigation questions conceptually similar to:
 
 ```text
-Why is this transaction uncategorized?
+Why is bank transaction 10 unmatched?
 ```
 
 ```text
-What category would you recommend for this transaction, and why?
+What evidence supports the possible match for bank transaction 10?
 ```
 
 ```text
-What vendor or historical context supports this recommendation?
+Which reconciliation issues need attention?
 ```
 
-The assistant should distinguish retrieved evidence from its recommendation and
-must not represent an unapproved AI suggestion as accounting truth.
+The Assistant should explain observable evidence and uncertainty without
+representing a possible match as a finalized reconciliation result.
 
 # 31. Next Milestone Definition of Done
 
-Milestone 3.1 — Uncategorized Transaction Investigation is complete when:
+Milestone 3.2 — Reconciliation Investigation is complete when:
 
-* an uncategorized transaction can be investigated through the read-only tool layer
-* relevant accounting context can be retrieved deterministically
-* vendor or historical context is included where useful
-* the result provides an evidence-based recommendation
-* the recommendation remains human-reviewable
-* no category is automatically approved or written
+* one reconciliation issue can be investigated through the read-only tool layer
+* bank-transaction and linked financial-transaction evidence is exposed clearly
+* amount, date, description, match type, and confidence are used where available
+* deterministic reasons explain why an item is unmatched or uncertain
+* possible matches remain explicitly human-reviewable
+* investigation does not silently finalize or mutate reconciliation state
 * generic AI tool execution boundaries remain intact
+* Demo Mode routing and formatting are deterministic
 * regression tests pass with a new verified baseline
 * `PROJECT_STATUS.md` and `ROADMAP.md` are updated after verification
 

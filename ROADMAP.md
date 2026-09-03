@@ -609,21 +609,52 @@ Use the read-only tool layer to investigate accounting problems.
 
 ## Milestone 3.1 — Uncategorized Transaction Investigation
 
-Workflow:
+Implemented workflow:
 
 ```text
-find uncategorized transaction
-        ↓
+identify transaction
+        ?
 retrieve accounting context
-        ↓
+        ?
 inspect vendor/history
-        ↓
-produce recommendation
-        ↓
+        ?
+produce read-only recommendation
+        ?
 human decides
 ```
 
-No automatic final write.
+The implementation introduces the read-only
+`investigate_uncategorized_transaction` AI tool.
+
+The investigation result includes:
+
+* transaction details
+* any existing stored AI suggestion
+* active accounting-category context
+* confirmed historical examples
+* a validated category recommendation
+* recommendation confidence
+* evidence-based rationale
+* explicit human-review requirement
+
+Stored AI suggestions are explicitly distinguished from approved accounting
+truth.
+
+### Definition of Done
+
+* [x] one uncategorized transaction can be investigated by transaction ID
+* [x] investigation uses `financial_transactions` as the transaction source
+* [x] accounting context is retrieved through the existing RAG layer
+* [x] confirmed vendor/description history is exposed as evidence
+* [x] recommendations are validated against the active Chart of Accounts
+* [x] stored AI suggestions remain distinct from investigation recommendations
+* [x] categorized and missing-transaction behavior is deterministic
+* [x] investigation performs no category approval or accounting write
+* [x] no database commit occurs in the investigation path
+* [x] AI tool registry and strict schema integration are complete
+* [x] Demo Mode routes through generic `_execute_tool()`
+* [x] final categorization remains human-controlled
+* [x] tests pass — 146 passed
 
 ---
 
@@ -1358,23 +1389,25 @@ Start with:
 
 ```text
 Phase 3
-Milestone 3.1 — Uncategorized Transaction Investigation
+Milestone 3.2 — Reconciliation Investigation
 ```
 
 Goal:
 
-Use the existing read-only financial tool layer to investigate uncategorized
-transactions and produce an evidence-based recommendation for human review.
+Use the read-only investigation layer to explain why a bank transaction is
+unmatched and which reconciliation issues deserve human attention.
 
 Before implementation:
 
-1. inspect the current uncategorized / AI categorization review workflow
-2. inspect `python/accounting_rag.py` and existing accounting context retrieval
-3. inspect transaction, vendor, category, and historical-context helpers
-4. define the smallest read-only investigation result contract
-5. preserve the rule that AI recommendations are not accounting truth
-6. do not automatically write or approve a category
-7. run or confirm the current `138 passed` baseline
+1. inspect `get_reconciliation_review_queue()` and the current bank-match data contract
+2. inspect the existing `get_reconciliation_review` AI tool and Assistant routing
+3. inspect bank transaction amount, date, description, vendor/memo, match type, and confidence fields
+4. inspect the linked `financial_transactions` evidence already returned by reconciliation queries
+5. define the smallest useful read-only reconciliation-investigation contract
+6. distinguish confirmed matches, possible matches, and no-match evidence
+7. do not call write paths that finalize, reject, or otherwise mutate reconciliation state
+8. preserve generic `_execute_tool()` as the AI execution boundary
+9. run or confirm the current `146 passed` baseline
 
-Complete and test Milestone 3.1 before moving to reconciliation investigation
-or anomaly detection.
+Complete and test Milestone 3.2 before moving to deterministic anomaly
+detection.

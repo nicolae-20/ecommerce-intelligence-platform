@@ -806,6 +806,151 @@ def get_ai_categorization_review_queue():
     finally:
         connection.close()
 
+def investigate_uncategorized_transaction(
+    transaction_id,
+    client=None,
+):
+    from accounting_rag import get_accounting_context
+    from llm_categorizer import (
+        suggest_transaction_category,
+        validate_category_suggestion,
+    )
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    transaction_id,
+                    transaction_date,
+                    transaction_type,
+                    description,
+                    amount,
+                    category,
+                    vendor,
+                    ai_suggested_category,
+                    ai_confidence,
+                    reconciliation_status,
+                    status
+                FROM financial_transactions
+                WHERE transaction_id = :transaction_id
+            """, {
+                "transaction_id": transaction_id,
+            })
+
+            row = cursor.fetchone()
+    finally:
+        connection.close()
+
+    if row is None:
+        return None
+
+    transaction = {
+        "transaction_id": row[0],
+        "transaction_date": row[1],
+        "transaction_type": row[2],
+        "description": row[3],
+        "amount": row[4],
+        "category": row[5],
+        "vendor": row[6],
+        "reconciliation_status": row[9],
+        "status": row[10],
+    }
+
+    current_ai_suggestion = (
+        {
+            "category": row[7],
+            "confidence": row[8],
+        }
+        if row[7] is not None
+        else None
+    )
+
+    if row[5] is not None:
+        return {
+            "transaction": transaction,
+            "investigation_status": "ALREADY_CATEGORIZED",
+            "current_ai_suggestion": current_ai_suggestion,
+            "evidence": {
+                "available_categories": [],
+                "historical_examples": [],
+                "supporting_example_count": 0,
+            },
+            "recommendation": None,
+            "requires_human_review": False,
+        }
+
+    context = get_accounting_context(
+        description=row[3],
+        vendor=row[6],
+    )
+
+    suggestion = suggest_transaction_category(
+        description=row[3],
+        vendor=row[6],
+        amount=float(row[4]),
+        client=client,
+        context=context,
+    )
+
+    # Validate even in deterministic Demo Mode. The existing categorizer
+    # validates model responses, but Demo Mode should obey the same trust
+    # boundary for investigation results.
+    suggestion = validate_category_suggestion(
+        suggestion,
+        context,
+    )
+
+    supporting_examples = [
+        example
+        for example in context.examples
+        if example["category"] == suggestion.category
+    ]
+
+    if supporting_examples:
+        rationale = (
+            f"{len(supporting_examples)} confirmed historical "
+            f"example(s) support the recommended category "
+            f"{suggestion.category}. Vendor and description context "
+            f"were used as supporting evidence."
+        )
+    elif context.examples:
+        rationale = (
+            f"Relevant confirmed historical examples were retrieved, "
+            f"but none directly support {suggestion.category}. "
+            f"The recommendation is based on the transaction description, "
+            f"vendor, and available Chart of Accounts."
+        )
+    else:
+        rationale = (
+            f"No relevant confirmed historical examples were found. "
+            f"The recommendation is based on the transaction description, "
+            f"vendor, and available Chart of Accounts."
+        )
+
+    return {
+        "transaction": transaction,
+        "investigation_status": "RECOMMENDATION_READY",
+        "current_ai_suggestion": current_ai_suggestion,
+        "evidence": {
+            "available_categories": [
+                category["account_name"]
+                for category in context.categories
+            ],
+            "historical_examples": context.examples,
+            "supporting_example_count": len(supporting_examples),
+        },
+        "recommendation": {
+            "category": suggestion.category,
+            "confidence": suggestion.confidence,
+            "high_confidence": suggestion.high_confidence,
+            "rationale": rationale,
+        },
+        "requires_human_review": True,
+    }
+
+
 def approve_transaction_category(transaction_id):
     connection = get_connection()
 

@@ -76,6 +76,19 @@ def _extract_top_limit(question: str, default: int = 10) -> int:
     return min(max(int(match.group(1)), 1), 100)
 
 
+def _extract_transaction_id(question: str) -> int | None:
+    match = re.search(
+        r"\btransaction(?:\s+id)?\s*#?\s*(\d+)\b",
+        question,
+        re.IGNORECASE,
+    )
+
+    if match is None:
+        return None
+
+    return int(match.group(1))
+
+
 def _extract_analysis_period(question: str) -> str:
     question_lower = question.lower()
 
@@ -232,6 +245,8 @@ def _select_tools(question: str) -> list[str]:
         question
     )
     min_amount, max_amount = _extract_amount_filters(question)
+    transaction_id = _extract_transaction_id(question)
+
     has_spending_language = bool(
         re.search(r"\b(?:spend|spent|spending)\b", question_lower)
     )
@@ -278,6 +293,47 @@ def _select_tools(question: str) -> list[str]:
     wants_expense_trends = (
         bool(re.search(r"\b(?:expenses?|spending)\b", question_lower))
         and has_trend_language
+    )
+
+    has_investigation_language = bool(
+        re.search(
+            r"\b(?:why|investigate|investigation|recommend|"
+            r"recommendation|context|evidence)\b",
+            question_lower,
+        )
+    )
+
+    wants_uncategorized_investigation = (
+        transaction_id is not None
+        and (
+            (
+                "uncategorized" in question_lower
+                and has_investigation_language
+            )
+            or (
+                "category" in question_lower
+                and bool(
+                    re.search(
+                        r"\b(?:recommend|recommendation)\b",
+                        question_lower,
+                    )
+                )
+            )
+            or (
+                bool(
+                    re.search(
+                        r"\b(?:context|evidence)\b",
+                        question_lower,
+                    )
+                )
+                and bool(
+                    re.search(
+                        r"\b(?:recommend|recommendation)\b",
+                        question_lower,
+                    )
+                )
+            )
+        )
     )
 
     wants_financial_statistics = (
@@ -336,6 +392,9 @@ def _select_tools(question: str) -> list[str]:
         or "bookkeeping overview" in question_lower
     ):
         tools.append("get_bookkeeping_summary")
+
+    if wants_uncategorized_investigation:
+        tools.append("investigate_uncategorized_transaction")
 
     if (
         "ai review" in question_lower
@@ -408,7 +467,10 @@ def _select_tools(question: str) -> list[str]:
         )
     )
 
-    if not has_financial_analytics_request:
+    if not (
+        has_financial_analytics_request
+        or wants_uncategorized_investigation
+    ):
         if has_transaction_filters or has_relative_date_request:
             tools.append("get_transactions")
 
@@ -646,6 +708,60 @@ def _format_ai_review_queue(result: Any) -> str:
     return "\n".join(lines)
 
 
+def _format_uncategorized_investigation(result: Any) -> str:
+    if not result:
+        return "No financial transaction was found for that transaction ID."
+
+    transaction = result["transaction"]
+
+    if result["investigation_status"] == "ALREADY_CATEGORIZED":
+        return (
+            f"Transaction {transaction['transaction_id']} is already "
+            f"categorized as {transaction['category']}. "
+            f"No uncategorized-transaction recommendation was generated."
+        )
+
+    recommendation = result["recommendation"]
+    current_ai_suggestion = result.get("current_ai_suggestion")
+    evidence = result["evidence"]
+
+    stored_suggestion_text = (
+        (
+            f"Stored AI suggestion: "
+            f"{current_ai_suggestion['category']} at "
+            f"{float(current_ai_suggestion['confidence']) * 100:.0f}% "
+            f"confidence. This stored suggestion is not approved "
+            f"accounting truth. "
+        )
+        if (
+            current_ai_suggestion is not None
+            and current_ai_suggestion.get("confidence") is not None
+        )
+        else (
+            f"Stored AI suggestion: "
+            f"{current_ai_suggestion['category']} with no confidence "
+            f"score. This stored suggestion is not approved accounting "
+            f"truth. "
+            if current_ai_suggestion is not None
+            else "There is no stored AI category suggestion. "
+        )
+    )
+
+    return (
+        f"Transaction {transaction['transaction_id']} remains "
+        f"uncategorized: {transaction['description'] or 'No description'}, "
+        f"vendor {transaction['vendor'] or 'No vendor'}, "
+        f"amount €{abs(float(transaction['amount'])):.2f}. "
+        f"{stored_suggestion_text}"
+        f"Read-only recommendation: {recommendation['category']} at "
+        f"{float(recommendation['confidence']) * 100:.0f}% confidence. "
+        f"Supporting confirmed examples: "
+        f"{evidence['supporting_example_count']}. "
+        f"{recommendation['rationale']} "
+        f"Final categorization requires human review and approval."
+    )
+
+
 def _format_reconciliation_review(result: Any) -> str:
     if not result:
         return "There are no reconciliation items requiring review."
@@ -811,6 +927,9 @@ def _format_tool_result(
     if tool_name == "get_ai_review_queue":
         return _format_ai_review_queue(result)
 
+    if tool_name == "investigate_uncategorized_transaction":
+        return _format_uncategorized_investigation(result)
+
     if tool_name == "get_reconciliation_review":
         return _format_reconciliation_review(result)
 
@@ -887,6 +1006,18 @@ def _get_demo_tool_arguments(
     tool_name: str,
     question: str,
 ) -> dict[str, Any]:
+    if tool_name == "investigate_uncategorized_transaction":
+        transaction_id = _extract_transaction_id(question)
+
+        if transaction_id is None:
+            raise ValueError(
+                "Please provide a financial transaction ID."
+            )
+
+        return {
+            "transaction_id": transaction_id,
+        }
+
     if tool_name == "get_transactions_by_date":
         date_range = _extract_date_range(question)
 

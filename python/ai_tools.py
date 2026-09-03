@@ -1,5 +1,6 @@
 from analytics import (
     get_ai_categorization_review_queue,
+    investigate_uncategorized_transaction,
     get_audit_log,
     get_bookkeeping_summary,
     get_expense_trends,
@@ -18,6 +19,14 @@ def tool_get_bookkeeping_summary():
 
 def tool_get_ai_review_queue():
     return get_ai_categorization_review_queue()
+
+
+def tool_investigate_uncategorized_transaction(
+    transaction_id: int,
+):
+    return investigate_uncategorized_transaction(
+        transaction_id=transaction_id,
+    )
 
 
 def tool_get_reconciliation_review():
@@ -272,6 +281,7 @@ AND (
 TOOL_REGISTRY = {
     "get_bookkeeping_summary": tool_get_bookkeeping_summary,
     "get_ai_review_queue": tool_get_ai_review_queue,
+    "investigate_uncategorized_transaction": tool_investigate_uncategorized_transaction,
     "get_reconciliation_review": tool_get_reconciliation_review,
     "get_audit_log": tool_get_audit_log,
     "get_spending_by_category": tool_get_spending_by_category,
@@ -311,6 +321,31 @@ TOOL_DEFINITIONS = [
             "type": "object",
             "properties": {},
             "required": [],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "investigate_uncategorized_transaction",
+        "description": (
+            "Investigate one financial transaction that is currently "
+            "uncategorized. Return transaction details, confirmed historical "
+            "accounting context, a read-only category recommendation, and "
+            "whether human review is required. This tool never approves or "
+            "writes an accounting category."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "transaction_id": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": (
+                        "Financial transaction ID to investigate."
+                    ),
+                },
+            },
+            "required": ["transaction_id"],
             "additionalProperties": False,
         },
     },

@@ -280,11 +280,44 @@ def _select_tools(question: str) -> list[str]:
         and has_trend_language
     )
 
+    wants_financial_statistics = (
+        "financial statistics" in question_lower
+        or "financial stats" in question_lower
+        or "transaction count" in question_lower
+        or bool(
+            re.search(
+                r"\b(?:average|largest)\s+expense\b",
+                question_lower,
+            )
+        )
+        or (
+            "posted" in question_lower
+            and "pending" in question_lower
+            and bool(
+                re.search(
+                    r"\b(?:count|counts|how many|versus|vs\.?)\b",
+                    question_lower,
+                )
+            )
+        )
+        or (
+            "categorized" in question_lower
+            and "uncategorized" in question_lower
+            and bool(
+                re.search(
+                    r"\b(?:count|counts|how many|versus|vs\.?)\b",
+                    question_lower,
+                )
+            )
+        )
+    )
+
     has_financial_analytics_request = (
         wants_category_spending
         or wants_vendor_spending
         or wants_revenue_analysis
         or wants_expense_trends
+        or wants_financial_statistics
     )
     has_reconciliation_transaction_context = (
         reconciliation_status is not None
@@ -340,6 +373,9 @@ def _select_tools(question: str) -> list[str]:
 
     if wants_expense_trends:
         tools.append("get_expense_trends")
+
+    if wants_financial_statistics:
+        tools.append("get_financial_statistics")
 
     has_transaction_filters = (
         "expenses over" in question_lower
@@ -793,6 +829,9 @@ def _format_tool_result(
     if tool_name == "get_vendor_totals":
         return _format_vendor_totals(result)
 
+    if tool_name == "get_financial_statistics":
+        return _format_financial_statistics(result)
+
     if tool_name == "get_revenue_analysis":
         return _format_revenue_analysis(result)
 
@@ -884,6 +923,13 @@ def _get_demo_tool_arguments(
             "limit": _extract_top_limit(question),
         }
 
+    if tool_name == "get_financial_statistics":
+        date_range = _extract_date_range(question)
+        return {
+            "start_date": date_range[0] if date_range else None,
+            "end_date": date_range[1] if date_range else None,
+        }
+
     if tool_name == "get_revenue_analysis":
         date_range = _extract_date_range(question)
         return {
@@ -963,6 +1009,37 @@ def _format_vendor_totals(result: Any) -> str:
         )
 
     return "\n".join(lines)
+
+
+def _format_financial_statistics(result: Any) -> str:
+    if not result:
+        return "No financial statistics are available."
+
+    average_expense = result.get("average_expense")
+    largest_expense = result.get("largest_expense")
+
+    average_text = (
+        f"€{float(average_expense):.2f}"
+        if average_expense is not None
+        else "N/A"
+    )
+    largest_text = (
+        f"€{float(largest_expense):.2f}"
+        if largest_expense is not None
+        else "N/A"
+    )
+
+    return (
+        f"Financial statistics: "
+        f"{result.get('transaction_count', 0)} transaction(s). "
+        f"Average posted expense: {average_text}. "
+        f"Largest posted expense: {largest_text}. "
+        f"Status counts: {result.get('posted_count', 0)} posted, "
+        f"{result.get('pending_count', 0)} pending. "
+        f"Categorization counts: "
+        f"{result.get('categorized_count', 0)} categorized, "
+        f"{result.get('uncategorized_count', 0)} uncategorized."
+    )
 
 
 def _format_revenue_analysis(result: Any) -> str:

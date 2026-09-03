@@ -1011,20 +1011,6 @@ Verify no secret files are staged.
 
 The following should not be represented as finished.
 
-## Financial analytics AI tools
-
-Dedicated SQL-backed financial analytics are now implemented for:
-
-* spending by category
-* vendor spending
-* revenue analysis
-* expense trends
-
-These analytics use `financial_transactions` as the accounting source of truth
-and execute through the existing read-only AI tool architecture.
-
-Milestone 2.5 — Financial Statistics remains future work.
-
 ## AI Assistant frontend
 
 The Assistant UI should be considered incomplete or partially implemented until inspected and finished.
@@ -1061,69 +1047,67 @@ Not yet complete.
 
 # 29. Immediate Next Milestone
 
-The next planned backend milestone is:
-
-```text
-Phase 2
-Milestone 2.5 — Financial Statistics
-```
-
-Add a deliberately small set of deterministic, decision-useful financial
-statistics using `financial_transactions` as the accounting source of truth.
-
-Candidate metrics include:
-
-* transaction count
-* average expense
-* largest expense
-* posted vs pending counts
-* categorized vs uncategorized counts
-
-Median or overlapping dashboard statistics should be added only if they
-materially improve the financial investigation workflow.
+Phase 2 — Financial Analytics is complete.
 
 The current verified backend baseline is:
 
 ```text
-132 passed
+138 passed
 0 failed
 0 errors
 ```
 
+The next planned backend milestone is:
+
+```text
+Phase 3
+Milestone 3.1 — Uncategorized Transaction Investigation
+```
+
+The goal is to use the existing read-only financial and accounting-context
+layers to investigate uncategorized transactions.
+
+The workflow should:
+
+* identify an uncategorized transaction
+* retrieve relevant accounting context
+* inspect vendor and historical information where useful
+* produce an evidence-based category recommendation
+* leave the final accounting decision to a human
+
+No automatic category approval or final accounting write is part of this
+milestone.
+
 # 30. Immediate Next Query Targets
 
-After Milestone 2.5, Demo Mode should support deterministic financial-statistics
-questions conceptually similar to:
+Milestone 3.1 should support investigation questions conceptually similar to:
 
 ```text
-What is our average expense?
+Why is this transaction uncategorized?
 ```
 
 ```text
-What is our largest expense?
+What category would you recommend for this transaction, and why?
 ```
 
 ```text
-How many transactions are posted versus pending?
+What vendor or historical context supports this recommendation?
 ```
 
-```text
-How many transactions are categorized versus uncategorized?
-```
-
-The implementation should add only statistics that improve later financial
-investigation workflows.
+The assistant should distinguish retrieved evidence from its recommendation and
+must not represent an unapproved AI suggestion as accounting truth.
 
 # 31. Next Milestone Definition of Done
 
-Milestone 2.5 ? Financial Statistics is complete when:
+Milestone 3.1 — Uncategorized Transaction Investigation is complete when:
 
-* only decision-useful statistics are added
-* `financial_transactions` remains the accounting source of truth
-* calculations are deterministic and read-only
-* SQL filters use Oracle bind parameters where applicable
-* AI tool registry and schema integration are complete where useful
-* Demo Mode routing and formatting are deterministic
+* an uncategorized transaction can be investigated through the read-only tool layer
+* relevant accounting context can be retrieved deterministically
+* vendor or historical context is included where useful
+* the result provides an evidence-based recommendation
+* the recommendation remains human-reviewable
+* no category is automatically approved or written
+* generic AI tool execution boundaries remain intact
 * regression tests pass with a new verified baseline
 * `PROJECT_STATUS.md` and `ROADMAP.md` are updated after verification
 
@@ -1143,6 +1127,7 @@ Then inspect:
 
 ```text
 python/analytics.py
+python/accounting_rag.py
 python/ai_tools.py
 python/ai_assistant.py
 tests/test_analytics.py

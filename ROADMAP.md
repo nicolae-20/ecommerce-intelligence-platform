@@ -567,16 +567,35 @@ AI should explain the results, not invent them.
 
 ## Milestone 2.5 — Financial Statistics
 
-Potential metrics:
+Implemented metrics:
 
 * transaction count
-* average expense
-* largest expense
-* median where useful
-* posted vs pending
-* categorized vs uncategorized
+* average posted expense
+* largest posted expense
+* posted vs pending counts
+* categorized vs uncategorized counts
 
-Only add metrics that improve the project.
+Median was deliberately not added because the current investigation workflow
+does not justify the additional metric.
+
+### Definition of Done
+
+* [x] `financial_transactions` remains the accounting source of truth
+* [x] transaction count is deterministic
+* [x] average expense uses posted `EXPENSE` and `BANK_FEE` transactions with `ABS(amount)`
+* [x] largest expense uses the same posted expense semantics
+* [x] posted and pending counts are exposed
+* [x] categorized and uncategorized counts are exposed
+* [x] optional inclusive date filters use Oracle bind parameters
+* [x] implementation is read-only
+* [x] AI tool registry and strict schema integration are complete
+* [x] Demo Mode routes through generic `_execute_tool()`
+* [x] deterministic formatting is covered by tests
+* [x] tests pass — 138 passed
+
+### Phase 2 Status
+
+**COMPLETE — verified baseline: 138 passed.**
 
 ---
 
@@ -1314,7 +1333,7 @@ The project is portfolio-ready when:
 * [ ] AI categorization works
 * [ ] accounting RAG works
 * [ ] natural-language financial querying is strong
-* [ ] dedicated financial analytics tools work
+* [x] dedicated financial analytics tools work
 * [ ] AI Assistant backend works
 * [ ] AI Assistant frontend is polished
 * [ ] Demo Mode works with zero paid model usage
@@ -1338,18 +1357,24 @@ The project is portfolio-ready when:
 Start with:
 
 ```text
-Phase 2
-Milestone 2.5 — Financial Statistics
+Phase 3
+Milestone 3.1 — Uncategorized Transaction Investigation
 ```
+
+Goal:
+
+Use the existing read-only financial tool layer to investigate uncategorized
+transactions and produce an evidence-based recommendation for human review.
 
 Before implementation:
 
-1. inspect the existing bookkeeping and financial analytics functions
-2. inspect the current AI tool registry and Assistant routing
-3. select only statistics that improve financial decision-making or later investigation workflows
-4. keep `financial_transactions` as the accounting source of truth
-5. preserve deterministic calculations and Oracle bind safety
-6. run or confirm the current `132 passed` baseline
+1. inspect the current uncategorized / AI categorization review workflow
+2. inspect `python/accounting_rag.py` and existing accounting context retrieval
+3. inspect transaction, vendor, category, and historical-context helpers
+4. define the smallest read-only investigation result contract
+5. preserve the rule that AI recommendations are not accounting truth
+6. do not automatically write or approve a category
+7. run or confirm the current `138 passed` baseline
 
-Keep Milestone 2.5 deliberately small. Do not add metrics simply to increase the
-number of analytics exposed.
+Complete and test Milestone 3.1 before moving to reconciliation investigation
+or anomaly detection.

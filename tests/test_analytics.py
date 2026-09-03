@@ -1469,6 +1469,7 @@ def test_ai_tool_registry():
     assert "get_vendor_totals" in TOOL_REGISTRY
     assert "get_revenue_analysis" in TOOL_REGISTRY
     assert "get_expense_trends" in TOOL_REGISTRY
+    assert "get_financial_statistics" in TOOL_REGISTRY
 
     assert callable(TOOL_REGISTRY["get_bookkeeping_summary"])
     assert callable(TOOL_REGISTRY["get_ai_review_queue"])
@@ -1478,6 +1479,7 @@ def test_ai_tool_registry():
     assert callable(TOOL_REGISTRY["get_vendor_totals"])
     assert callable(TOOL_REGISTRY["get_revenue_analysis"])
     assert callable(TOOL_REGISTRY["get_expense_trends"])
+    assert callable(TOOL_REGISTRY["get_financial_statistics"])
 
 
 def test_ai_tool_definitions():
@@ -1497,6 +1499,7 @@ def test_ai_tool_definitions():
         "get_vendor_totals",
         "get_revenue_analysis",
         "get_expense_trends",
+        "get_financial_statistics",
         "get_transactions_by_date",
         "get_transactions",
     }
@@ -3442,3 +3445,251 @@ def test_phase_one_and_existing_spending_routing_remain_preserved():
     assert _select_tools(
         "Show top 5 vendor spending this year."
     ) == ["get_vendor_totals"]
+
+
+def test_financial_statistics_sql_contract(monkeypatch):
+    import analytics
+
+    captured = {}
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, sql, binds):
+            captured["sql"] = sql
+            captured["binds"] = binds
+
+        def fetchone(self):
+            return (
+                8,
+                76.17,
+                129.00,
+                5,
+                3,
+                6,
+                2,
+            )
+
+    class FakeConnection:
+        def __init__(self):
+            self.closed = False
+
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            self.closed = True
+
+    connection = FakeConnection()
+
+    monkeypatch.setattr(
+        analytics,
+        "get_connection",
+        lambda: connection,
+    )
+
+    result = analytics.get_financial_statistics(
+        start_date="2026-08-01",
+        end_date="2026-08-31",
+    )
+
+    sql = " ".join(captured["sql"].split())
+
+    assert "FROM financial_transactions" in sql
+    assert "COUNT(*) AS transaction_count" in sql
+    assert "AVG(" in sql
+    assert "MAX(" in sql
+    assert "ABS(amount)" in sql
+    assert "transaction_type IN ('EXPENSE', 'BANK_FEE')" in sql
+    assert "status = 'POSTED'" in sql
+    assert ":start_date" in sql
+    assert ":end_date" in sql
+
+    assert captured["binds"] == {
+        "start_date": "2026-08-01",
+        "end_date": "2026-08-31",
+    }
+
+    assert result == {
+        "transaction_count": 8,
+        "average_expense": 76.17,
+        "largest_expense": 129.00,
+        "posted_count": 5,
+        "pending_count": 3,
+        "categorized_count": 6,
+        "uncategorized_count": 2,
+    }
+
+    assert connection.closed is True
+
+
+def test_financial_statistics_empty_expense_subset(monkeypatch):
+    import analytics
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, sql, binds):
+            pass
+
+        def fetchone(self):
+            return (
+                0,
+                None,
+                None,
+                0,
+                0,
+                0,
+                0,
+            )
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        analytics,
+        "get_connection",
+        lambda: FakeConnection(),
+    )
+
+    assert analytics.get_financial_statistics() == {
+        "transaction_count": 0,
+        "average_expense": None,
+        "largest_expense": None,
+        "posted_count": 0,
+        "pending_count": 0,
+        "categorized_count": 0,
+        "uncategorized_count": 0,
+    }
+
+
+def test_financial_statistics_tool_schema():
+    from ai_tools import TOOL_DEFINITIONS, TOOL_REGISTRY
+
+    assert "get_financial_statistics" in TOOL_REGISTRY
+
+    tool = next(
+        item
+        for item in TOOL_DEFINITIONS
+        if item["name"] == "get_financial_statistics"
+    )
+
+    assert tool["type"] == "function"
+    assert set(tool["parameters"]["properties"]) == {
+        "start_date",
+        "end_date",
+    }
+    assert tool["parameters"]["required"] == [
+        "start_date",
+        "end_date",
+    ]
+    assert tool["parameters"]["additionalProperties"] is False
+
+
+def test_financial_statistics_queries_route_without_raw_transactions():
+    from ai_assistant import _select_tools
+
+    examples = [
+        "Show financial statistics.",
+        "What is our average expense?",
+        "What is our largest expense?",
+        "How many transactions are posted versus pending?",
+        "How many transactions are categorized versus uncategorized?",
+    ]
+
+    for question in examples:
+        assert _select_tools(question) == [
+            "get_financial_statistics"
+        ]
+
+
+def test_financial_statistics_formatter():
+    from ai_assistant import _format_financial_statistics
+
+    message = _format_financial_statistics({
+        "transaction_count": 8,
+        "average_expense": 76.17,
+        "largest_expense": 129,
+        "posted_count": 5,
+        "pending_count": 3,
+        "categorized_count": 6,
+        "uncategorized_count": 2,
+    })
+
+    assert "8 transaction(s)" in message
+    assert "Average posted expense: €76.17" in message
+    assert "Largest posted expense: €129.00" in message
+    assert "5 posted, 3 pending" in message
+    assert "6 categorized, 2 uncategorized" in message
+
+    empty_expense_message = _format_financial_statistics({
+        "transaction_count": 0,
+        "average_expense": None,
+        "largest_expense": None,
+        "posted_count": 0,
+        "pending_count": 0,
+        "categorized_count": 0,
+        "uncategorized_count": 0,
+    })
+
+    assert "Average posted expense: N/A" in empty_expense_message
+    assert "Largest posted expense: N/A" in empty_expense_message
+
+
+def test_demo_assistant_executes_financial_statistics_generically(
+    monkeypatch,
+):
+    from datetime import date
+
+    import ai_assistant
+
+    calls = []
+
+    def fake_financial_statistics(**arguments):
+        calls.append(arguments)
+
+        return {
+            "transaction_count": 4,
+            "average_expense": 75,
+            "largest_expense": 100,
+            "posted_count": 3,
+            "pending_count": 1,
+            "categorized_count": 3,
+            "uncategorized_count": 1,
+        }
+
+    monkeypatch.setattr(
+        ai_assistant,
+        "_current_local_date",
+        lambda: date(2026, 9, 3),
+    )
+
+    monkeypatch.setitem(
+        ai_assistant.TOOL_REGISTRY,
+        "get_financial_statistics",
+        fake_financial_statistics,
+    )
+
+    response = ai_assistant.ask_assistant(
+        "What is our average expense this month?"
+    )
+
+    assert response.tool_name == "get_financial_statistics"
+    assert len(calls) == 1
+    assert calls[0] == {
+        "start_date": "2026-09-01",
+        "end_date": "2026-09-03",
+    }
+    assert "Average posted expense: €75.00" in response.message

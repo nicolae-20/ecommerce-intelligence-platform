@@ -308,6 +308,103 @@ def get_bookkeeping_summary():
         connection.close()
 
 
+def get_financial_statistics(
+    start_date=None,
+    end_date=None,
+):
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    COUNT(*) AS transaction_count,
+
+                    ROUND(
+                        AVG(
+                            CASE
+                                WHEN transaction_type IN ('EXPENSE', 'BANK_FEE')
+                                     AND status = 'POSTED'
+                                THEN ABS(amount)
+                            END
+                        ),
+                        2
+                    ) AS average_expense,
+
+                    ROUND(
+                        MAX(
+                            CASE
+                                WHEN transaction_type IN ('EXPENSE', 'BANK_FEE')
+                                     AND status = 'POSTED'
+                                THEN ABS(amount)
+                            END
+                        ),
+                        2
+                    ) AS largest_expense,
+
+                    SUM(
+                        CASE
+                            WHEN status = 'POSTED' THEN 1
+                            ELSE 0
+                        END
+                    ) AS posted_count,
+
+                    SUM(
+                        CASE
+                            WHEN status = 'PENDING' THEN 1
+                            ELSE 0
+                        END
+                    ) AS pending_count,
+
+                    SUM(
+                        CASE
+                            WHEN category IS NOT NULL THEN 1
+                            ELSE 0
+                        END
+                    ) AS categorized_count,
+
+                    SUM(
+                        CASE
+                            WHEN category IS NULL THEN 1
+                            ELSE 0
+                        END
+                    ) AS uncategorized_count
+
+                FROM financial_transactions
+                WHERE (
+                    :start_date IS NULL
+                    OR transaction_date >= TO_TIMESTAMP(
+                        :start_date,
+                        'YYYY-MM-DD'
+                    )
+                )
+                AND (
+                    :end_date IS NULL
+                    OR transaction_date < TO_TIMESTAMP(
+                        :end_date,
+                        'YYYY-MM-DD'
+                    ) + INTERVAL '1' DAY
+                )
+            """, {
+                "start_date": start_date,
+                "end_date": end_date,
+            })
+
+            row = cursor.fetchone()
+
+            return {
+                "transaction_count": row[0] or 0,
+                "average_expense": row[1],
+                "largest_expense": row[2],
+                "posted_count": row[3] or 0,
+                "pending_count": row[4] or 0,
+                "categorized_count": row[5] or 0,
+                "uncategorized_count": row[6] or 0,
+            }
+    finally:
+        connection.close()
+
+
 def get_spending_by_category(
     category=None,
     start_date=None,

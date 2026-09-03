@@ -3,6 +3,7 @@ from analytics import (
     get_audit_log,
     get_bookkeeping_summary,
     get_expense_trends,
+    get_financial_statistics,
     get_reconciliation_review_queue,
     get_revenue_analysis,
     get_spending_by_category,
@@ -50,6 +51,16 @@ def tool_get_vendor_totals(
         start_date=start_date,
         end_date=end_date,
         limit=limit,
+    )
+
+
+def tool_get_financial_statistics(
+    start_date: str | None = None,
+    end_date: str | None = None,
+):
+    return get_financial_statistics(
+        start_date=start_date,
+        end_date=end_date,
     )
 
 
@@ -267,6 +278,7 @@ TOOL_REGISTRY = {
     "get_vendor_totals": tool_get_vendor_totals,
     "get_revenue_analysis": tool_get_revenue_analysis,
     "get_expense_trends": tool_get_expense_trends,
+    "get_financial_statistics": tool_get_financial_statistics,
     "get_transactions_by_date": tool_get_transactions_by_date,
     "get_transactions": tool_get_transactions,
 }
@@ -389,6 +401,30 @@ TOOL_DEFINITIONS = [
                 },
             },
             "required": ["vendor", "start_date", "end_date", "limit"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "get_financial_statistics",
+        "description": (
+            "Get deterministic bookkeeping statistics from financial "
+            "transactions, including transaction counts, posted expense "
+            "average and maximum, status counts, and categorization counts."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "start_date": {
+                    "type": ["string", "null"],
+                    "description": "Optional inclusive start date in YYYY-MM-DD format.",
+                },
+                "end_date": {
+                    "type": ["string", "null"],
+                    "description": "Optional inclusive end date in YYYY-MM-DD format.",
+                },
+            },
+            "required": ["start_date", "end_date"],
             "additionalProperties": False,
         },
     },

@@ -9,7 +9,7 @@ This document describes the current known implementation state.
 Snapshot baseline:
 
 ```text
-114 passed
+122 passed
 0 failed
 0 errors
 ```
@@ -445,9 +445,17 @@ get_bookkeeping_summary
 get_ai_review_queue
 get_reconciliation_review
 get_audit_log
+get_spending_by_category
+get_vendor_totals
 get_transactions_by_date
 get_transactions
 ```
+
+Milestones 2.1 and 2.2 are complete. Spending by category and vendor spending
+aggregate from `financial_transactions`, the accounting source of truth. Posted
+`EXPENSE` and `BANK_FEE` spending follows the existing sign semantics using
+`ABS(amount)`; optional inclusive date filters and other dynamic values remain
+Oracle bind-parameter safe.
 
 Verify the live code before changing this registry.
 
@@ -850,7 +858,7 @@ tests/test_api.py
 Current known baseline:
 
 ```text
-114 passed
+122 passed
 ```
 
 Current automated regression command:
@@ -1007,8 +1015,6 @@ The following should not be represented as finished.
 
 Dedicated aggregation tools such as:
 
-* spending by category
-* vendor totals
 * monthly revenue
 * monthly expenses
 * financial trends
@@ -1055,11 +1061,11 @@ The next planned backend milestone is:
 
 ```text
 Phase 2
-Milestone 2.1 — Spending by Category
+Milestone 2.3 — Revenue Analysis
 ```
 
-Add a read-only, Oracle-aggregated spending-by-category tool through the
-existing AI tool architecture.
+Add read-only total, date-range, period, and monthly revenue analytics through
+the existing AI tool architecture.
 
 Primary files likely involved:
 
@@ -1078,11 +1084,11 @@ Potential API changes are not expected unless implementation inspection shows th
 After the next milestone, Demo Mode should be able to support queries conceptually similar to:
 
 ```text
-How much did we spend on Software?
+How much revenue did we make in August?
 ```
 
 ```text
-Which expense category costs the most?
+Show monthly revenue.
 ```
 
 The exact parser behavior should be deterministic and covered by tests.
@@ -1093,7 +1099,7 @@ The exact parser behavior should be deterministic and covered by tests.
 
 The immediate milestone is complete when:
 
-* Oracle spending-by-category aggregation is implemented
+* Oracle revenue aggregation uses the accounting source of truth
 * the tool registry and schema are updated
 * deterministic Demo Mode routing and formatting are supported where useful
 * regression tests pass

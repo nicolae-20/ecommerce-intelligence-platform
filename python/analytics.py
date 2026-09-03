@@ -306,6 +306,119 @@ def get_bookkeeping_summary():
         connection.close()
 
 
+def get_spending_by_category(
+    category=None,
+    start_date=None,
+    end_date=None,
+):
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    NVL(category, 'Uncategorized') AS spending_category,
+                    ROUND(SUM(ABS(amount)), 2) AS total_spending,
+                    COUNT(*) AS transaction_count
+                FROM financial_transactions
+                WHERE transaction_type IN ('EXPENSE', 'BANK_FEE')
+                AND status = 'POSTED'
+                AND (
+                    :category IS NULL
+                    OR category = :category
+                )
+                AND (
+                    :start_date IS NULL
+                    OR transaction_date >= TO_TIMESTAMP(
+                        :start_date,
+                        'YYYY-MM-DD'
+                    )
+                )
+                AND (
+                    :end_date IS NULL
+                    OR transaction_date < TO_TIMESTAMP(
+                        :end_date,
+                        'YYYY-MM-DD'
+                    ) + INTERVAL '1' DAY
+                )
+                GROUP BY NVL(category, 'Uncategorized')
+                ORDER BY total_spending DESC, spending_category
+            """, {
+                "category": category,
+                "start_date": start_date,
+                "end_date": end_date,
+            })
+
+            return [
+                {
+                    "category": row[0],
+                    "total_spending": row[1],
+                    "transaction_count": row[2],
+                }
+                for row in cursor.fetchall()
+            ]
+    finally:
+        connection.close()
+
+
+def get_vendor_totals(
+    vendor=None,
+    start_date=None,
+    end_date=None,
+    limit=10,
+):
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    NVL(vendor, 'No vendor') AS spending_vendor,
+                    ROUND(SUM(ABS(amount)), 2) AS total_spending,
+                    COUNT(*) AS transaction_count
+                FROM financial_transactions
+                WHERE transaction_type IN ('EXPENSE', 'BANK_FEE')
+                AND status = 'POSTED'
+                AND (
+                    :vendor IS NULL
+                    OR LOWER(vendor) LIKE '%' || LOWER(:vendor) || '%'
+                )
+                AND (
+                    :start_date IS NULL
+                    OR transaction_date >= TO_TIMESTAMP(
+                        :start_date,
+                        'YYYY-MM-DD'
+                    )
+                )
+                AND (
+                    :end_date IS NULL
+                    OR transaction_date < TO_TIMESTAMP(
+                        :end_date,
+                        'YYYY-MM-DD'
+                    ) + INTERVAL '1' DAY
+                )
+                GROUP BY NVL(vendor, 'No vendor')
+                ORDER BY total_spending DESC, spending_vendor
+                FETCH FIRST :limit ROWS ONLY
+            """, {
+                "vendor": vendor,
+                "start_date": start_date,
+                "end_date": end_date,
+                "limit": limit,
+            })
+
+            return [
+                {
+                    "vendor": row[0],
+                    "total_spending": row[1],
+                    "transaction_count": row[2],
+                }
+                for row in cursor.fetchall()
+            ]
+    finally:
+        connection.close()
+
+
 def get_transactions_requiring_review():
     connection = get_connection()
 

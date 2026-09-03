@@ -17,6 +17,7 @@ from analytics import (
     get_customer_metrics,
     get_financial_summary,
     get_monthly_revenue,
+    get_spending_by_category,
     get_top_customers,
     get_transactions_requiring_review,
     reject_transaction_category,
@@ -29,6 +30,7 @@ from analytics import (
     investigate_bank_transaction,
     log_audit_event,
     get_audit_log,
+    get_vendor_totals,
     categorize_transaction_with_llm,
     categorize_uncategorized_transactions,
 )
@@ -45,6 +47,25 @@ def test_monthly_revenue():
 
     assert len(revenue) == 3
     assert revenue[0][0] == "2026-01"
+
+
+def test_spending_by_category():
+    spending = get_spending_by_category()
+
+    assert spending
+    assert all(item["category"] is not None for item in spending)
+    assert all(float(item["total_spending"]) >= 0 for item in spending)
+    assert all(item["transaction_count"] > 0 for item in spending)
+
+
+def test_vendor_totals():
+    totals = get_vendor_totals(limit=5)
+
+    assert totals
+    assert len(totals) <= 5
+    assert all(item["vendor"] is not None for item in totals)
+    assert all(float(item["total_spending"]) >= 0 for item in totals)
+    assert all(item["transaction_count"] > 0 for item in totals)
 
 
 def test_customer_metrics():
@@ -1416,11 +1437,15 @@ def test_ai_tool_registry():
     assert "get_ai_review_queue" in TOOL_REGISTRY
     assert "get_reconciliation_review" in TOOL_REGISTRY
     assert "get_audit_log" in TOOL_REGISTRY
+    assert "get_spending_by_category" in TOOL_REGISTRY
+    assert "get_vendor_totals" in TOOL_REGISTRY
 
     assert callable(TOOL_REGISTRY["get_bookkeeping_summary"])
     assert callable(TOOL_REGISTRY["get_ai_review_queue"])
     assert callable(TOOL_REGISTRY["get_reconciliation_review"])
     assert callable(TOOL_REGISTRY["get_audit_log"])
+    assert callable(TOOL_REGISTRY["get_spending_by_category"])
+    assert callable(TOOL_REGISTRY["get_vendor_totals"])
 
 
 def test_ai_tool_definitions():
@@ -1436,6 +1461,8 @@ def test_ai_tool_definitions():
         "get_ai_review_queue",
         "get_reconciliation_review",
         "get_audit_log",
+        "get_spending_by_category",
+        "get_vendor_totals",
         "get_transactions_by_date",
         "get_transactions",
     }
@@ -1469,6 +1496,40 @@ def test_ai_tool_definitions():
     assert set(
         transaction_tool["parameters"]["required"]
     ) == expected_filters
+
+    category_spending_tool = next(
+        tool
+        for tool in TOOL_DEFINITIONS
+        if tool["name"] == "get_spending_by_category"
+    )
+    assert set(category_spending_tool["parameters"]["properties"]) == {
+        "category",
+        "start_date",
+        "end_date",
+    }
+    assert set(category_spending_tool["parameters"]["required"]) == {
+        "category",
+        "start_date",
+        "end_date",
+    }
+
+    vendor_totals_tool = next(
+        tool
+        for tool in TOOL_DEFINITIONS
+        if tool["name"] == "get_vendor_totals"
+    )
+    assert set(vendor_totals_tool["parameters"]["properties"]) == {
+        "vendor",
+        "start_date",
+        "end_date",
+        "limit",
+    }
+    assert set(vendor_totals_tool["parameters"]["required"]) == {
+        "vendor",
+        "start_date",
+        "end_date",
+        "limit",
+    }
 
     for tool in TOOL_DEFINITIONS:
         assert tool["type"] == "function"
@@ -2676,3 +2737,282 @@ def test_demo_assistant_combines_phase_one_filters(monkeypatch):
         "start_date": "2026-02-01",
         "end_date": "2026-02-28",
     }
+
+
+def test_spending_by_category_uses_accounting_semantics_and_binds(monkeypatch):
+    import re
+
+    import analytics
+
+    captured = {}
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, statement, parameters):
+            captured["statement"] = statement
+            captured["parameters"] = parameters
+
+        def fetchall(self):
+            return [
+                ("Software", 175.5, 2),
+                ("Uncategorized", 25, 1),
+            ]
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            captured["closed"] = True
+
+    monkeypatch.setattr(
+        analytics,
+        "get_connection",
+        lambda: FakeConnection(),
+    )
+
+    result = analytics.get_spending_by_category(
+        category="Software",
+        start_date="2026-08-01",
+        end_date="2026-08-31",
+    )
+
+    assert result == [
+        {
+            "category": "Software",
+            "total_spending": 175.5,
+            "transaction_count": 2,
+        },
+        {
+            "category": "Uncategorized",
+            "total_spending": 25,
+            "transaction_count": 1,
+        },
+    ]
+    assert "FROM financial_transactions" in captured["statement"]
+    assert "FROM orders" not in captured["statement"]
+    assert "transaction_type IN ('EXPENSE', 'BANK_FEE')" in captured["statement"]
+    assert "status = 'POSTED'" in captured["statement"]
+    assert "SUM(ABS(amount))" in captured["statement"]
+    assert "NVL(category, 'Uncategorized')" in captured["statement"]
+    assert set(re.findall(r":([a-z_]+)", captured["statement"])) == {
+        "category",
+        "start_date",
+        "end_date",
+    }
+    assert captured["parameters"] == {
+        "category": "Software",
+        "start_date": "2026-08-01",
+        "end_date": "2026-08-31",
+    }
+    assert "2026-08-01" not in captured["statement"]
+    assert "2026-08-31" not in captured["statement"]
+    assert captured["closed"] is True
+
+
+def test_vendor_totals_uses_accounting_semantics_and_binds(monkeypatch):
+    import re
+
+    import analytics
+
+    captured = {}
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, statement, parameters):
+            captured["statement"] = statement
+            captured["parameters"] = parameters
+
+        def fetchall(self):
+            return [
+                ("Microsoft", 150, 2),
+                ("No vendor", 10, 1),
+            ]
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            captured["closed"] = True
+
+    monkeypatch.setattr(
+        analytics,
+        "get_connection",
+        lambda: FakeConnection(),
+    )
+
+    result = analytics.get_vendor_totals(
+        vendor="micro",
+        start_date="2026-08-01",
+        end_date="2026-08-31",
+        limit=5,
+    )
+
+    assert result == [
+        {
+            "vendor": "Microsoft",
+            "total_spending": 150,
+            "transaction_count": 2,
+        },
+        {
+            "vendor": "No vendor",
+            "total_spending": 10,
+            "transaction_count": 1,
+        },
+    ]
+    assert "FROM financial_transactions" in captured["statement"]
+    assert "FROM orders" not in captured["statement"]
+    assert "transaction_type IN ('EXPENSE', 'BANK_FEE')" in captured["statement"]
+    assert "status = 'POSTED'" in captured["statement"]
+    assert "SUM(ABS(amount))" in captured["statement"]
+    assert "NVL(vendor, 'No vendor')" in captured["statement"]
+    assert set(re.findall(r":([a-z_]+)", captured["statement"])) == {
+        "vendor",
+        "start_date",
+        "end_date",
+        "limit",
+    }
+    assert captured["parameters"] == {
+        "vendor": "micro",
+        "start_date": "2026-08-01",
+        "end_date": "2026-08-31",
+        "limit": 5,
+    }
+    assert "micro" not in captured["statement"]
+    assert captured["closed"] is True
+
+
+def test_phase_two_spending_queries_route_without_raw_transactions():
+    from ai_assistant import _select_tools
+
+    examples = {
+        "How much did we spend on Software?": "get_spending_by_category",
+        "Which expense category costs the most?": "get_spending_by_category",
+        "Show spending by category last month.": "get_spending_by_category",
+        "Which vendors cost us the most?": "get_vendor_totals",
+        "How much did we spend with Microsoft?": "get_vendor_totals",
+        "Show top 5 vendor spending this year.": "get_vendor_totals",
+    }
+
+    for question, expected_tool in examples.items():
+        assert _select_tools(question) == [expected_tool]
+
+
+def test_spending_formatters_handle_results_and_empty_lists():
+    from ai_assistant import (
+        _format_spending_by_category,
+        _format_vendor_totals,
+    )
+
+    category_message = _format_spending_by_category([
+        {
+            "category": "Software",
+            "total_spending": 175.5,
+            "transaction_count": 2,
+        },
+        {
+            "category": "Uncategorized",
+            "total_spending": 25,
+            "transaction_count": 1,
+        },
+    ])
+    vendor_message = _format_vendor_totals([
+        {
+            "vendor": "Microsoft",
+            "total_spending": 150,
+            "transaction_count": 2,
+        },
+        {
+            "vendor": "No vendor",
+            "total_spending": 10,
+            "transaction_count": 1,
+        },
+    ])
+
+    assert "Software: €175.50 across 2 transaction(s)" in category_message
+    assert "Uncategorized: €25.00" in category_message
+    assert "Microsoft: €150.00 across 2 transaction(s)" in vendor_message
+    assert "No vendor: €10.00" in vendor_message
+    assert "No posted expense spending" in _format_spending_by_category([])
+    assert "No posted expense spending" in _format_vendor_totals([])
+
+
+def test_demo_assistant_executes_spending_analytics_generically(monkeypatch):
+    from datetime import date
+
+    import ai_assistant
+
+    calls = []
+
+    def fake_category_spending(**arguments):
+        calls.append(("get_spending_by_category", arguments))
+        return []
+
+    def fake_vendor_totals(**arguments):
+        calls.append(("get_vendor_totals", arguments))
+        return []
+
+    monkeypatch.setattr(
+        ai_assistant,
+        "_current_local_date",
+        lambda: date(2026, 3, 15),
+    )
+    monkeypatch.setitem(
+        ai_assistant.TOOL_REGISTRY,
+        "get_spending_by_category",
+        fake_category_spending,
+    )
+    monkeypatch.setitem(
+        ai_assistant.TOOL_REGISTRY,
+        "get_vendor_totals",
+        fake_vendor_totals,
+    )
+
+    category_response = ai_assistant.ask_assistant(
+        "How much did we spend on Software last month?"
+    )
+    vendor_response = ai_assistant.ask_assistant(
+        "Show top 5 vendor spending between 2026-01-01 and 2026-03-31."
+    )
+
+    assert category_response.tool_name == "get_spending_by_category"
+    assert vendor_response.tool_name == "get_vendor_totals"
+    assert calls == [
+        (
+            "get_spending_by_category",
+            {
+                "category": "Software",
+                "start_date": "2026-02-01",
+                "end_date": "2026-02-28",
+            },
+        ),
+        (
+            "get_vendor_totals",
+            {
+                "vendor": None,
+                "start_date": "2026-01-01",
+                "end_date": "2026-03-31",
+                "limit": 5,
+            },
+        ),
+    ]
+
+
+def test_phase_one_complex_query_routing_is_preserved():
+    from ai_assistant import _select_tools
+
+    assert _select_tools(
+        "Show me posted Microsoft Software expenses over €50 "
+        "between 2026-08-01 and 2026-08-31."
+    ) == ["get_transactions"]

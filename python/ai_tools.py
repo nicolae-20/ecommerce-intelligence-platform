@@ -3,6 +3,8 @@ from analytics import (
     get_audit_log,
     get_bookkeeping_summary,
     get_reconciliation_review_queue,
+    get_spending_by_category,
+    get_vendor_totals,
 )
 from database import get_connection
 
@@ -21,6 +23,32 @@ def tool_get_reconciliation_review():
 
 def tool_get_audit_log():
     return get_audit_log()
+
+
+def tool_get_spending_by_category(
+    category: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+):
+    return get_spending_by_category(
+        category=category,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+def tool_get_vendor_totals(
+    vendor: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    limit: int = 10,
+):
+    return get_vendor_totals(
+        vendor=vendor,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+    )
 
 
 def tool_get_transactions_by_date(
@@ -205,6 +233,8 @@ TOOL_REGISTRY = {
     "get_ai_review_queue": tool_get_ai_review_queue,
     "get_reconciliation_review": tool_get_reconciliation_review,
     "get_audit_log": tool_get_audit_log,
+    "get_spending_by_category": tool_get_spending_by_category,
+    "get_vendor_totals": tool_get_vendor_totals,
     "get_transactions_by_date": tool_get_transactions_by_date,
     "get_transactions": tool_get_transactions,
 }
@@ -265,6 +295,68 @@ TOOL_DEFINITIONS = [
             "type": "object",
             "properties": {},
             "required": [],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "get_spending_by_category",
+        "description": (
+            "Aggregate posted expense and bank-fee spending by accounting "
+            "category using absolute transaction amounts."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": ["string", "null"],
+                    "description": (
+                        "Optional accounting category, such as Software."
+                    ),
+                },
+                "start_date": {
+                    "type": ["string", "null"],
+                    "description": "Optional inclusive start date in YYYY-MM-DD format.",
+                },
+                "end_date": {
+                    "type": ["string", "null"],
+                    "description": "Optional inclusive end date in YYYY-MM-DD format.",
+                },
+            },
+            "required": ["category", "start_date", "end_date"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "get_vendor_totals",
+        "description": (
+            "Aggregate posted expense and bank-fee spending by vendor using "
+            "absolute transaction amounts."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "vendor": {
+                    "type": ["string", "null"],
+                    "description": "Optional full or partial vendor name.",
+                },
+                "start_date": {
+                    "type": ["string", "null"],
+                    "description": "Optional inclusive start date in YYYY-MM-DD format.",
+                },
+                "end_date": {
+                    "type": ["string", "null"],
+                    "description": "Optional inclusive end date in YYYY-MM-DD format.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "description": "Maximum number of vendor groups to return.",
+                },
+            },
+            "required": ["vendor", "start_date", "end_date", "limit"],
             "additionalProperties": False,
         },
     },

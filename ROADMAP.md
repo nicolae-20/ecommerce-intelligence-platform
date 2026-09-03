@@ -26,7 +26,7 @@ Do not mark a milestone complete until its Definition of Done has been satisfied
 Current verified test baseline:
 
 ```text
-114 passed
+122 passed
 0 failed
 0 errors
 ```
@@ -439,6 +439,10 @@ Goal:
 
 Move calculations into dedicated SQL-backed financial tools rather than asking AI to infer totals from raw transactions.
 
+`financial_transactions` is the accounting source of truth. Posted `EXPENSE`
+and `BANK_FEE` spending uses `ABS(amount)`, with optional inclusive date filters
+passed through Oracle bind parameters.
+
 ---
 
 ## Milestone 2.1 — Spending by Category
@@ -463,11 +467,11 @@ Which expense category costs the most?
 
 ### Definition of Done
 
-* [ ] Oracle aggregation implemented
-* [ ] tool registry/schema updated
-* [ ] Demo routing supported where useful
-* [ ] formatter implemented
-* [ ] tests pass
+* [x] Oracle aggregation implemented
+* [x] tool registry/schema updated
+* [x] Demo routing supported where useful
+* [x] formatter implemented
+* [x] tests pass — 122 passed
 
 ---
 
@@ -491,10 +495,10 @@ How much did we spend with Microsoft?
 
 ### Definition of Done
 
-* [ ] vendor totals use SQL aggregation
-* [ ] top-N supported where appropriate
-* [ ] date range supported if practical
-* [ ] tests pass
+* [x] vendor totals use SQL aggregation
+* [x] top-N supported where appropriate
+* [x] date range supported
+* [x] tests pass — 122 passed
 
 ---
 
@@ -1308,17 +1312,17 @@ Start with:
 
 ```text
 Phase 2
-Milestone 2.1 — Spending by Category
+Milestone 2.3 — Revenue Analysis
 ```
 
 Before implementation:
 
-1. inspect the existing aggregation and AI tool architecture
+1. inspect the existing revenue and AI tool architecture
 2. inspect `python/ai_tools.py` and `python/ai_assistant.py`
 3. inspect relevant tests in `tests/test_analytics.py`
-4. verify expense-sign and category semantics
+4. verify revenue source, sign, status, and period semantics
 5. run or confirm the current test baseline
-6. implement spending-by-category aggregation incrementally
+6. implement revenue analytics incrementally
 
 Do not continue automatically into several later milestones in one large change unless explicitly requested.
 

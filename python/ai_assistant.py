@@ -13,6 +13,17 @@ KNOWN_VENDORS = (
     "Office Depot",
 )
 
+KNOWN_CATEGORIES = (
+    "Sales Revenue",
+    "Cost of Goods Sold",
+    "Software",
+    "Office Supplies",
+    "Bank Fees",
+    "Travel",
+    "Advertising",
+    "Utilities",
+)
+
 @dataclass
 class AssistantResponse:
     message: str
@@ -28,6 +39,25 @@ def _extract_known_vendor(question: str) -> str | None:
             return vendor
 
     return None
+
+
+def _extract_known_category(question: str) -> str | None:
+    question_lower = question.lower()
+
+    for category in KNOWN_CATEGORIES:
+        if category.lower() in question_lower:
+            return category
+
+    return None
+
+
+def _extract_top_limit(question: str, default: int = 10) -> int:
+    match = re.search(r"\btop\s+(\d+)\b", question.lower())
+
+    if match is None:
+        return default
+
+    return min(max(int(match.group(1)), 1), 100)
 
 
 def _extract_transaction_type(question: str) -> str | None:
@@ -165,6 +195,7 @@ def _select_tool(question: str) -> str | None:
 
 def _select_tools(question: str) -> list[str]:
     question_lower = question.lower()
+    category = _extract_known_category(question)
     vendor = _extract_known_vendor(question)
     transaction_type = _extract_transaction_type(question)
     reconciliation_status = _extract_reconciliation_status(question)
@@ -173,6 +204,28 @@ def _select_tools(question: str) -> list[str]:
         question
     )
     min_amount, max_amount = _extract_amount_filters(question)
+    has_spending_language = bool(
+        re.search(r"\b(?:spend|spent|spending)\b", question_lower)
+    )
+    wants_category_spending = (
+        "spending by category" in question_lower
+        or (
+            "expense category" in question_lower
+            and "most" in question_lower
+        )
+        or (category is not None and has_spending_language)
+    )
+    wants_vendor_spending = (
+        "vendor spending" in question_lower
+        or (
+            "vendors" in question_lower
+            and "cost" in question_lower
+        )
+        or (vendor is not None and has_spending_language)
+    )
+    has_spending_analytics_request = (
+        wants_category_spending or wants_vendor_spending
+    )
     has_reconciliation_transaction_context = (
         reconciliation_status is not None
         and (
@@ -216,6 +269,12 @@ def _select_tools(question: str) -> list[str]:
     ):
         tools.append("get_audit_log")
 
+    if wants_category_spending:
+        tools.append("get_spending_by_category")
+
+    if wants_vendor_spending:
+        tools.append("get_vendor_totals")
+
     has_transaction_filters = (
         "expenses over" in question_lower
         or "expenses above" in question_lower
@@ -247,11 +306,12 @@ def _select_tools(question: str) -> list[str]:
         )
     )
 
-    if has_transaction_filters or has_relative_date_request:
-        tools.append("get_transactions")
+    if not has_spending_analytics_request:
+        if has_transaction_filters or has_relative_date_request:
+            tools.append("get_transactions")
 
-    elif has_explicit_date_range_request:
-        tools.append("get_transactions_by_date")
+        elif has_explicit_date_range_request:
+            tools.append("get_transactions_by_date")
 
     return list(dict.fromkeys(tools))
 
@@ -333,21 +393,7 @@ def _extract_transaction_filters(
     "end_date": None,
     }
 
-    categories = [
-        "Sales Revenue",
-        "Cost of Goods Sold",
-        "Software",
-        "Office Supplies",
-        "Bank Fees",
-        "Travel",
-        "Advertising",
-        "Utilities",
-    ]
-
-    for category in categories:
-        if category.lower() in question_lower:
-            filters["category"] = category
-            break
+    filters["category"] = _extract_known_category(question)
 
     filters["vendor"] = _extract_known_vendor(question)
     filters["transaction_type"] = _extract_transaction_type(question)
@@ -655,6 +701,12 @@ def _format_tool_result(
     if tool_name == "get_transactions":
         return _format_transactions(result)
 
+    if tool_name == "get_spending_by_category":
+        return _format_spending_by_category(result)
+
+    if tool_name == "get_vendor_totals":
+        return _format_vendor_totals(result)
+
     return f"Executed tool: {tool_name}"
 
 def _format_transactions_by_date(result: Any) -> str:
@@ -723,6 +775,23 @@ def _get_demo_tool_arguments(
             question
         )
 
+    if tool_name == "get_spending_by_category":
+        date_range = _extract_date_range(question)
+        return {
+            "category": _extract_known_category(question),
+            "start_date": date_range[0] if date_range else None,
+            "end_date": date_range[1] if date_range else None,
+        }
+
+    if tool_name == "get_vendor_totals":
+        date_range = _extract_date_range(question)
+        return {
+            "vendor": _extract_known_vendor(question),
+            "start_date": date_range[0] if date_range else None,
+            "end_date": date_range[1] if date_range else None,
+            "limit": _extract_top_limit(question),
+        }
+
     return {}
 
 
@@ -749,6 +818,38 @@ def _format_transactions(result: Any) -> str:
             f"vendor: {vendor}, "
             f"category: {category}, "
             f"status: {status}."
+        )
+
+    return "\n".join(lines)
+
+
+def _format_spending_by_category(result: Any) -> str:
+    if not result:
+        return "No posted expense spending was found by category."
+
+    lines = ["Posted spending by category:"]
+
+    for item in result:
+        lines.append(
+            f"- {item['category']}: "
+            f"€{float(item['total_spending']):.2f} across "
+            f"{item['transaction_count']} transaction(s)."
+        )
+
+    return "\n".join(lines)
+
+
+def _format_vendor_totals(result: Any) -> str:
+    if not result:
+        return "No posted expense spending was found by vendor."
+
+    lines = ["Posted spending by vendor:"]
+
+    for item in result:
+        lines.append(
+            f"- {item['vendor']}: "
+            f"€{float(item['total_spending']):.2f} across "
+            f"{item['transaction_count']} transaction(s)."
         )
 
     return "\n".join(lines)

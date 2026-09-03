@@ -26,7 +26,7 @@ Do not mark a milestone complete until its Definition of Done has been satisfied
 Current verified test baseline:
 
 ```text
-111 passed
+114 passed
 0 failed
 0 errors
 ```
@@ -150,6 +150,10 @@ AI Assistant frontend polish is NOT included in this completed list.
 Goal:
 
 Build a strong deterministic querying layer before adding more autonomous AI behavior.
+
+Status: complete. All Phase 1 transaction filters compose correctly, SQL bind
+safety is verified, and complex Demo Mode routing passes through the generic
+`_execute_tool()` architecture.
 
 ---
 
@@ -421,11 +425,11 @@ Additional fields may exist by this milestone.
 
 ### Definition of Done
 
-* [ ] filters compose safely
-* [ ] no duplicate tool routing
-* [ ] no invalid Oracle binds
-* [ ] tests cover representative combinations
-* [ ] full suite passes
+* [x] filters compose safely
+* [x] no duplicate tool routing
+* [x] no invalid Oracle binds
+* [x] tests cover representative combinations
+* [x] full suite passes — 114 passed
 
 ---
 
@@ -1303,18 +1307,18 @@ The project is portfolio-ready when:
 Start with:
 
 ```text
-Phase 1
-Milestone 1.8 — Combined Filter Hardening
+Phase 2
+Milestone 2.1 — Spending by Category
 ```
 
 Before implementation:
 
-1. inspect `python/ai_tools.py`
-2. inspect `python/ai_assistant.py`
+1. inspect the existing aggregation and AI tool architecture
+2. inspect `python/ai_tools.py` and `python/ai_assistant.py`
 3. inspect relevant tests in `tests/test_analytics.py`
-4. verify all supported filters and Oracle bind semantics
+4. verify expense-sign and category semantics
 5. run or confirm the current test baseline
-6. harden representative combined-filter queries incrementally
+6. implement spending-by-category aggregation incrementally
 
 Do not continue automatically into several later milestones in one large change unless explicitly requested.
 

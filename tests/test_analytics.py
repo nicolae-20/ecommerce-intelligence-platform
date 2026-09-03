@@ -1449,16 +1449,26 @@ def test_ai_tool_definitions():
     )
 
     assert transaction_tool["type"] == "function"
-    assert "category" in transaction_tool["parameters"]["properties"]
-    assert "vendor" in transaction_tool["parameters"]["properties"]
-    assert "transaction_type" in transaction_tool["parameters"]["properties"]
-    assert "reconciliation_status" in transaction_tool["parameters"]["properties"]
-    assert "categorization_state" in transaction_tool["parameters"]["properties"]
-    assert "min_ai_confidence" in transaction_tool["parameters"]["properties"]
-    assert "max_ai_confidence" in transaction_tool["parameters"]["properties"]
-    assert "min_amount" in transaction_tool["parameters"]["properties"]
-    assert "max_amount" in transaction_tool["parameters"]["properties"]
-    assert "status" in transaction_tool["parameters"]["properties"]
+    expected_filters = {
+        "category",
+        "vendor",
+        "transaction_type",
+        "reconciliation_status",
+        "categorization_state",
+        "min_ai_confidence",
+        "max_ai_confidence",
+        "min_amount",
+        "max_amount",
+        "status",
+        "start_date",
+        "end_date",
+    }
+    assert set(
+        transaction_tool["parameters"]["properties"]
+    ) == expected_filters
+    assert set(
+        transaction_tool["parameters"]["required"]
+    ) == expected_filters
 
     for tool in TOOL_DEFINITIONS:
         assert tool["type"] == "function"
@@ -1999,6 +2009,8 @@ def test_tool_get_transactions_filters_by_ai_confidence():
 
 
 def test_tool_get_transactions_combines_and_binds_optional_filters(monkeypatch):
+    import re
+
     import ai_tools
 
     captured = {}
@@ -2031,30 +2043,51 @@ def test_tool_get_transactions_combines_and_binds_optional_filters(monkeypatch):
     )
 
     result = ai_tools.tool_get_transactions(
+        category="Software",
         vendor="office depot",
         transaction_type="EXPENSE",
         reconciliation_status="MATCHED",
         categorization_state="CATEGORIZED",
         min_ai_confidence=0.80,
         max_ai_confidence=0.95,
+        min_amount=50,
+        max_amount=200,
+        status="POSTED",
+        start_date="2026-08-01",
+        end_date="2026-08-31",
     )
 
     assert result == []
-    assert ":vendor" in captured["statement"]
-    assert ":transaction_type" in captured["statement"]
-    assert ":reconciliation_status" in captured["statement"]
-    assert ":categorization_state" in captured["statement"]
-    assert ":min_ai_confidence" in captured["statement"]
-    assert ":max_ai_confidence" in captured["statement"]
-    assert "office depot" not in captured["statement"]
-    assert "EXPENSE" not in captured["statement"]
-    assert "MATCHED" not in captured["statement"]
-    assert captured["parameters"]["vendor"] == "office depot"
-    assert captured["parameters"]["transaction_type"] == "EXPENSE"
-    assert captured["parameters"]["reconciliation_status"] == "MATCHED"
-    assert captured["parameters"]["categorization_state"] == "CATEGORIZED"
-    assert captured["parameters"]["min_ai_confidence"] == 0.80
-    assert captured["parameters"]["max_ai_confidence"] == 0.95
+    bind_names = set(
+        re.findall(r":([a-z_]+)", captured["statement"])
+    )
+    assert bind_names == set(captured["parameters"])
+    assert captured["parameters"] == {
+        "category": "Software",
+        "vendor": "office depot",
+        "transaction_type": "EXPENSE",
+        "reconciliation_status": "MATCHED",
+        "categorization_state": "CATEGORIZED",
+        "min_ai_confidence": 0.80,
+        "max_ai_confidence": 0.95,
+        "min_amount": 50,
+        "max_amount": 200,
+        "status": "POSTED",
+        "start_date": "2026-08-01",
+        "end_date": "2026-08-31",
+    }
+
+    for value in (
+        "Software",
+        "office depot",
+        "EXPENSE",
+        "MATCHED",
+        "POSTED",
+        "2026-08-01",
+        "2026-08-31",
+    ):
+        assert value not in captured["statement"]
+
     assert captured["closed"] is True
 
 
@@ -2565,3 +2598,81 @@ def test_demo_assistant_combines_amount_and_relative_date_filters(monkeypatch):
     assert captured["status"] == "POSTED"
     assert captured["start_date"] == "2026-02-01"
     assert captured["end_date"] == "2026-02-28"
+
+
+def test_extract_transaction_filters_combines_roadmap_target():
+    from ai_assistant import _extract_transaction_filters
+
+    result = _extract_transaction_filters(
+        "Show me posted Microsoft Software expenses over €50 "
+        "between 2026-08-01 and 2026-08-31."
+    )
+
+    assert result == {
+        "category": "Software",
+        "vendor": "Microsoft",
+        "transaction_type": "EXPENSE",
+        "reconciliation_status": None,
+        "categorization_state": None,
+        "min_ai_confidence": None,
+        "max_ai_confidence": None,
+        "min_amount": 50.0,
+        "max_amount": None,
+        "status": "POSTED",
+        "start_date": "2026-08-01",
+        "end_date": "2026-08-31",
+    }
+
+
+def test_roadmap_target_routes_get_transactions_once():
+    from ai_assistant import _select_tools
+
+    assert _select_tools(
+        "Show me posted Microsoft Software expenses over €50 "
+        "between 2026-08-01 and 2026-08-31."
+    ) == ["get_transactions"]
+
+
+def test_demo_assistant_combines_phase_one_filters(monkeypatch):
+    from datetime import date
+
+    import ai_assistant
+
+    calls = []
+
+    def fake_get_transactions(**arguments):
+        calls.append(arguments)
+        return []
+
+    monkeypatch.setattr(
+        ai_assistant,
+        "_current_local_date",
+        lambda: date(2026, 3, 15),
+    )
+    monkeypatch.setitem(
+        ai_assistant.TOOL_REGISTRY,
+        "get_transactions",
+        fake_get_transactions,
+    )
+
+    response = ai_assistant.ask_assistant(
+        "Show me posted unmatched uncategorized Microsoft expenses "
+        "between €50 and €200 below 80% confidence last month."
+    )
+
+    assert response.tool_name == "get_transactions"
+    assert len(calls) == 1
+    assert calls[0] == {
+        "category": None,
+        "vendor": "Microsoft",
+        "transaction_type": "EXPENSE",
+        "reconciliation_status": "UNMATCHED",
+        "categorization_state": "UNCATEGORIZED",
+        "min_ai_confidence": None,
+        "max_ai_confidence": 0.80,
+        "min_amount": 50.0,
+        "max_amount": 200.0,
+        "status": "POSTED",
+        "start_date": "2026-02-01",
+        "end_date": "2026-02-28",
+    }

@@ -9,7 +9,7 @@ This document describes the current known implementation state.
 Snapshot baseline:
 
 ```text
-111 passed
+114 passed
 0 failed
 0 errors
 ```
@@ -814,6 +814,11 @@ the complete previous calendar month; `last 30 days` includes today and the
 preceding 29 days. Resolution accepts an explicit reference date for
 deterministic boundary tests.
 
+Phase 1 transaction-query hardening is complete. Regression coverage verifies
+that all supported filters compose without overwriting one another, every
+Oracle placeholder has a matching bind parameter, and complex Demo Mode queries
+route once through the generic `_execute_tool()` path and `TOOL_REGISTRY`.
+
 ---
 
 # 23. AI Tool Result Formatting
@@ -845,7 +850,7 @@ tests/test_api.py
 Current known baseline:
 
 ```text
-111 passed
+114 passed
 ```
 
 Current automated regression command:
@@ -998,14 +1003,6 @@ Verify no secret files are staged.
 
 The following should not be represented as finished.
 
-## Natural-language financial querying
-
-Still needs expansion beyond current filters.
-
-Planned additions include:
-
-* combined-filter hardening
-
 ## Financial analytics AI tools
 
 Dedicated aggregation tools such as:
@@ -1057,12 +1054,12 @@ Not yet complete.
 The next planned backend milestone is:
 
 ```text
-Phase 1
-Milestone 1.8 — Combined Filter Hardening
+Phase 2
+Milestone 2.1 — Spending by Category
 ```
 
-Verify that all supported transaction filters compose safely without duplicate
-tool routing or invalid Oracle binds.
+Add a read-only, Oracle-aggregated spending-by-category tool through the
+existing AI tool architecture.
 
 Primary files likely involved:
 
@@ -1081,7 +1078,11 @@ Potential API changes are not expected unless implementation inspection shows th
 After the next milestone, Demo Mode should be able to support queries conceptually similar to:
 
 ```text
-Show me posted Microsoft Software expenses over €50 between 2026-08-01 and 2026-08-31.
+How much did we spend on Software?
+```
+
+```text
+Which expense category costs the most?
 ```
 
 The exact parser behavior should be deterministic and covered by tests.
@@ -1092,10 +1093,9 @@ The exact parser behavior should be deterministic and covered by tests.
 
 The immediate milestone is complete when:
 
-* all supported transaction filters compose safely
-* tool routing remains deduplicated
-* Oracle bind parameters remain valid
-* representative combined queries are covered by tests
+* Oracle spending-by-category aggregation is implemented
+* the tool registry and schema are updated
+* deterministic Demo Mode routing and formatting are supported where useful
 * regression tests pass
 * this file is updated with the new baseline
 * the corresponding roadmap milestone is marked complete

@@ -26,7 +26,7 @@ Do not mark a milestone complete until its Definition of Done has been satisfied
 Current verified test baseline:
 
 ```text
-102 passed
+105 passed
 0 failed
 0 errors
 ```
@@ -307,10 +307,10 @@ Show high-confidence uncategorized transactions.
 
 ### Definition of Done
 
-* [ ] confidence filtering implemented
-* [ ] percentage parsing tested
-* [ ] review workflow semantics preserved
-* [ ] tests pass
+* [x] confidence filtering implemented
+* [x] percentage parsing tested
+* [x] review workflow semantics preserved
+* [x] tests pass — 105 passed
 
 ---
 
@@ -1304,7 +1304,7 @@ Start with:
 
 ```text
 Phase 1
-Milestone 1.5 — AI Confidence Filtering
+Milestone 1.6 — Amount Parsing Improvements
 ```
 
 Before implementation:
@@ -1312,9 +1312,9 @@ Before implementation:
 1. inspect `python/ai_tools.py`
 2. inspect `python/ai_assistant.py`
 3. inspect relevant tests in `tests/test_analytics.py`
-4. verify existing AI confidence and review-threshold semantics
+4. verify existing amount comparison semantics
 5. run or confirm the current test baseline
-6. implement AI confidence filtering incrementally
+6. improve amount parsing incrementally
 
 Do not continue automatically into several later milestones in one large change unless explicitly requested.
 

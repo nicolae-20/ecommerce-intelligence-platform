@@ -1454,6 +1454,8 @@ def test_ai_tool_definitions():
     assert "transaction_type" in transaction_tool["parameters"]["properties"]
     assert "reconciliation_status" in transaction_tool["parameters"]["properties"]
     assert "categorization_state" in transaction_tool["parameters"]["properties"]
+    assert "min_ai_confidence" in transaction_tool["parameters"]["properties"]
+    assert "max_ai_confidence" in transaction_tool["parameters"]["properties"]
     assert "min_amount" in transaction_tool["parameters"]["properties"]
     assert "max_amount" in transaction_tool["parameters"]["properties"]
     assert "status" in transaction_tool["parameters"]["properties"]
@@ -1982,7 +1984,21 @@ def test_tool_get_transactions_filters_by_categorization_state():
         assert transaction["category"] is None
 
 
-def test_tool_get_transactions_binds_optional_filters(monkeypatch):
+def test_tool_get_transactions_filters_by_ai_confidence():
+    from ai_tools import tool_get_transactions
+
+    result = tool_get_transactions(
+        min_ai_confidence=0.80,
+    )
+
+    assert result
+
+    for transaction in result:
+        assert transaction["ai_confidence"] is not None
+        assert float(transaction["ai_confidence"]) >= 0.80
+
+
+def test_tool_get_transactions_combines_and_binds_optional_filters(monkeypatch):
     import ai_tools
 
     captured = {}
@@ -2019,6 +2035,8 @@ def test_tool_get_transactions_binds_optional_filters(monkeypatch):
         transaction_type="EXPENSE",
         reconciliation_status="MATCHED",
         categorization_state="CATEGORIZED",
+        min_ai_confidence=0.80,
+        max_ai_confidence=0.95,
     )
 
     assert result == []
@@ -2026,6 +2044,8 @@ def test_tool_get_transactions_binds_optional_filters(monkeypatch):
     assert ":transaction_type" in captured["statement"]
     assert ":reconciliation_status" in captured["statement"]
     assert ":categorization_state" in captured["statement"]
+    assert ":min_ai_confidence" in captured["statement"]
+    assert ":max_ai_confidence" in captured["statement"]
     assert "office depot" not in captured["statement"]
     assert "EXPENSE" not in captured["statement"]
     assert "MATCHED" not in captured["statement"]
@@ -2033,6 +2053,8 @@ def test_tool_get_transactions_binds_optional_filters(monkeypatch):
     assert captured["parameters"]["transaction_type"] == "EXPENSE"
     assert captured["parameters"]["reconciliation_status"] == "MATCHED"
     assert captured["parameters"]["categorization_state"] == "CATEGORIZED"
+    assert captured["parameters"]["min_ai_confidence"] == 0.80
+    assert captured["parameters"]["max_ai_confidence"] == 0.95
     assert captured["closed"] is True
 
 
@@ -2077,6 +2099,8 @@ def test_extract_transaction_filters():
         "transaction_type": "EXPENSE",
         "reconciliation_status": None,
         "categorization_state": None,
+        "min_ai_confidence": None,
+        "max_ai_confidence": None,
         "min_amount": 50.0,
         "max_amount": None,
         "status": None,
@@ -2147,6 +2171,22 @@ def test_extract_transaction_filters_with_categorization_states():
 
     assert uncategorized["categorization_state"] == "UNCATEGORIZED"
     assert categorized["categorization_state"] == "CATEGORIZED"
+
+
+def test_extract_transaction_filters_with_ai_confidence():
+    from ai_assistant import _extract_transaction_filters
+
+    below = _extract_transaction_filters(
+        "Show me AI suggestions below 80% confidence."
+    )
+    high = _extract_transaction_filters(
+        "Show me high-confidence uncategorized transactions."
+    )
+
+    assert below["min_ai_confidence"] is None
+    assert below["max_ai_confidence"] == 0.80
+    assert high["min_ai_confidence"] == AI_CONFIDENCE_THRESHOLD
+    assert high["max_ai_confidence"] is None
 
 
 def test_demo_assistant_vendor_only_transactions():
@@ -2315,6 +2355,47 @@ def test_demo_assistant_filters_by_categorization_state(monkeypatch):
     assert captured["categorization_state"] == "CATEGORIZED"
 
 
+def test_demo_assistant_filters_by_ai_confidence(monkeypatch):
+    from ai_assistant import TOOL_REGISTRY, ask_assistant
+
+    captured = {}
+
+    def fake_get_transactions(**arguments):
+        captured.update(arguments)
+        return [
+            {
+                "transaction_id": 4,
+                "transaction_date": "2026-08-04",
+                "transaction_type": "EXPENSE",
+                "description": "Microsoft subscription",
+                "amount": -50,
+                "category": None,
+                "vendor": "Microsoft",
+                "ai_suggested_category": "Software",
+                "ai_confidence": 0.90,
+                "reconciliation_status": "UNMATCHED",
+                "status": "POSTED",
+            }
+        ]
+
+    monkeypatch.setitem(
+        TOOL_REGISTRY,
+        "get_transactions",
+        fake_get_transactions,
+    )
+
+    response = ask_assistant(
+        "Show me high-confidence uncategorized Microsoft expenses."
+    )
+
+    assert response.tool_name == "get_transactions"
+    assert captured["vendor"] == "Microsoft"
+    assert captured["transaction_type"] == "EXPENSE"
+    assert captured["categorization_state"] == "UNCATEGORIZED"
+    assert captured["min_ai_confidence"] == AI_CONFIDENCE_THRESHOLD
+    assert captured["max_ai_confidence"] is None
+
+
 def test_demo_assistant_filtered_transactions():
     from ai_assistant import ask_assistant
 
@@ -2342,6 +2423,8 @@ def test_extract_transaction_filters_with_date_range():
         "transaction_type": "EXPENSE",
         "reconciliation_status": None,
         "categorization_state": None,
+        "min_ai_confidence": None,
+        "max_ai_confidence": None,
         "min_amount": 50.0,
         "max_amount": None,
         "status": None,

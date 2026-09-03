@@ -9,7 +9,7 @@ This document describes the current known implementation state.
 Snapshot baseline:
 
 ```text
-102 passed
+105 passed
 0 failed
 0 errors
 ```
@@ -614,6 +614,8 @@ vendor
 transaction_type
 reconciliation_status
 categorization_state
+min_ai_confidence
+max_ai_confidence
 min_amount
 max_amount
 status
@@ -654,6 +656,12 @@ UNCATEGORIZED
 This is derived from `category IS NOT NULL` and `category IS NULL`; no fake
 accounting category is introduced. The state is exposed through the existing
 tool schema and selected through an Oracle bind parameter.
+
+AI confidence filtering uses the stored AI suggestion confidence value. The
+minimum threshold is inclusive, the maximum threshold is exclusive, and the
+existing high-confidence threshold remains `0.80`. Both bounds are exposed
+through the existing tool schema and use Oracle bind parameters. These filters
+remain distinct from finalized categorization and human-review semantics.
 
 Amount comparisons use transaction magnitude through `ABS(amount)` where implemented.
 
@@ -721,6 +729,8 @@ vendor
 transaction_type
 reconciliation_status
 categorization_state
+min_ai_confidence
+max_ai_confidence
 min_amount
 max_amount
 status
@@ -829,7 +839,7 @@ tests/test_api.py
 Current known baseline:
 
 ```text
-102 passed
+105 passed
 ```
 
 Current automated regression command:
@@ -988,7 +998,6 @@ Still needs expansion beyond current filters.
 
 Planned additions include:
 
-* AI confidence filtering
 * improved amount parsing
 * richer date expressions
 
@@ -1044,11 +1053,12 @@ The next planned backend milestone is:
 
 ```text
 Phase 1
-Milestone 1.5 — AI Confidence Filtering
+Milestone 1.6 — Amount Parsing Improvements
 ```
 
-Extend transaction querying and deterministic Demo Mode parsing with explicit
-AI suggestion confidence thresholds while preserving human-review semantics.
+Expand deterministic Demo Mode amount parsing with explicit inclusive and
+exclusive comparison semantics while preserving the existing transaction query
+architecture.
 
 Primary files likely involved:
 
@@ -1067,11 +1077,11 @@ Potential API changes are not expected unless implementation inspection shows th
 After the next milestone, Demo Mode should be able to support queries conceptually similar to:
 
 ```text
-Show me AI suggestions below 80% confidence.
+Show me expenses at least €50.
 ```
 
 ```text
-Show me high-confidence uncategorized transactions.
+Show me transactions between €50 and €200.
 ```
 
 The exact parser behavior should be deterministic and covered by tests.
@@ -1082,10 +1092,9 @@ The exact parser behavior should be deterministic and covered by tests.
 
 The immediate milestone is complete when:
 
-* confidence filtering is implemented
-* percentage parsing is tested
-* AI suggestion confidence remains distinct from finalized category state
-* human-review semantics are preserved
+* amount comparison semantics are defined explicitly
+* supported currency and comparison phrases are parsed deterministically
+* combined transaction filters remain supported
 * regression tests pass
 * this file is updated with the new baseline
 * the corresponding roadmap milestone is marked complete

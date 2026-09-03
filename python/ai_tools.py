@@ -84,6 +84,8 @@ def tool_get_transactions(
     transaction_type: str | None = None,
     reconciliation_status: str | None = None,
     categorization_state: str | None = None,
+    min_ai_confidence: float | None = None,
+    max_ai_confidence: float | None = None,
     min_amount: float | None = None,
     max_amount: float | None = None,
     status: str | None = None,
@@ -130,6 +132,14 @@ def tool_get_transactions(
                     END
                 )
                 AND (
+                    :min_ai_confidence IS NULL
+                    OR ai_confidence >= :min_ai_confidence
+                )
+                AND (
+                    :max_ai_confidence IS NULL
+                    OR ai_confidence < :max_ai_confidence
+                )
+                AND (
                     :min_amount IS NULL
                     OR ABS(amount) >= :min_amount
                 )
@@ -162,6 +172,8 @@ AND (
                 "transaction_type": transaction_type,
                 "reconciliation_status": reconciliation_status,
                 "categorization_state": categorization_state,
+                "min_ai_confidence": min_ai_confidence,
+                "max_ai_confidence": max_ai_confidence,
                 "min_amount": min_amount,
                 "max_amount": max_amount,
                 "status": status,
@@ -288,8 +300,8 @@ TOOL_DEFINITIONS = [
     "description": (
         "Get financial transactions using optional filters "
         "for accounting category, vendor, transaction type, "
-        "reconciliation status, categorization state, absolute "
-        "transaction amount, and transaction status."
+        "reconciliation status, categorization state, AI suggestion "
+        "confidence, absolute transaction amount, and transaction status."
     ),
     "parameters": {
         "type": "object",
@@ -331,6 +343,24 @@ TOOL_DEFINITIONS = [
                     "CATEGORIZED or UNCATEGORIZED."
                 ),
             },
+            "min_ai_confidence": {
+                "type": ["number", "null"],
+                "minimum": 0,
+                "maximum": 1,
+                "description": (
+                    "Inclusive minimum stored AI suggestion confidence "
+                    "on the 0.0 to 1.0 scale."
+                ),
+            },
+            "max_ai_confidence": {
+                "type": ["number", "null"],
+                "minimum": 0,
+                "maximum": 1,
+                "description": (
+                    "Exclusive maximum stored AI suggestion confidence "
+                    "on the 0.0 to 1.0 scale."
+                ),
+            },
             "min_amount": {
                 "type": ["number", "null"],
                 "description": (
@@ -364,6 +394,8 @@ TOOL_DEFINITIONS = [
             "transaction_type",
             "reconciliation_status",
             "categorization_state",
+            "min_ai_confidence",
+            "max_ai_confidence",
             "min_amount",
             "max_amount",
             "status",

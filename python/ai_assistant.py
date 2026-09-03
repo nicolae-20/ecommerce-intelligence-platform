@@ -3,6 +3,7 @@ from typing import Any
 import re
 
 from ai_tools import TOOL_REGISTRY
+from llm_categorizer import AI_CONFIDENCE_THRESHOLD
 
 
 KNOWN_VENDORS = (
@@ -70,6 +71,33 @@ def _extract_categorization_state(question: str) -> str | None:
     return None
 
 
+def _extract_ai_confidence_filters(
+    question: str,
+) -> tuple[float | None, float | None]:
+    question_lower = question.lower()
+
+    below_match = re.search(
+        r"(?:below|under|less than)\s*(\d+(?:\.\d+)?)\s*%\s*confidence",
+        question_lower,
+    )
+
+    if below_match:
+        return None, float(below_match.group(1)) / 100
+
+    minimum_match = re.search(
+        r"at least\s*(\d+(?:\.\d+)?)\s*%\s*confidence",
+        question_lower,
+    )
+
+    if minimum_match:
+        return float(minimum_match.group(1)) / 100, None
+
+    if re.search(r"\bhigh[- ]confidence\b", question_lower):
+        return AI_CONFIDENCE_THRESHOLD, None
+
+    return None, None
+
+
 def _select_tool(question: str) -> str | None:
     question_lower = question.lower()
 
@@ -110,6 +138,9 @@ def _select_tools(question: str) -> list[str]:
     transaction_type = _extract_transaction_type(question)
     reconciliation_status = _extract_reconciliation_status(question)
     categorization_state = _extract_categorization_state(question)
+    min_ai_confidence, max_ai_confidence = _extract_ai_confidence_filters(
+        question
+    )
     has_reconciliation_transaction_context = (
         reconciliation_status is not None
         and (
@@ -166,6 +197,8 @@ def _select_tools(question: str) -> list[str]:
         or transaction_type is not None
         or has_reconciliation_transaction_context
         or categorization_state is not None
+        or min_ai_confidence is not None
+        or max_ai_confidence is not None
     )
 
     has_date_range_request = (
@@ -225,6 +258,8 @@ def _extract_transaction_filters(
     "transaction_type": None,
     "reconciliation_status": None,
     "categorization_state": None,
+    "min_ai_confidence": None,
+    "max_ai_confidence": None,
     "min_amount": None,
     "max_amount": None,
     "status": None,
@@ -252,6 +287,10 @@ def _extract_transaction_filters(
     filters["transaction_type"] = _extract_transaction_type(question)
     filters["reconciliation_status"] = _extract_reconciliation_status(question)
     filters["categorization_state"] = _extract_categorization_state(question)
+    (
+        filters["min_ai_confidence"],
+        filters["max_ai_confidence"],
+    ) = _extract_ai_confidence_filters(question)
 
     min_match = re.search(
         r"(?:over|above|more than|at least)\s*€?\s*(\d+(?:\.\d+)?)",

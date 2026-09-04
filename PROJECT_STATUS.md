@@ -9,9 +9,8 @@ This document describes the current known implementation state.
 Snapshot baseline:
 
 ```text
-200 passed
-0 failed
-0 errors
+full backend regression: passed
+pytest collection: 261 tests collected
 ```
 
 This test count is a checkpoint, not a permanent target.
@@ -858,7 +857,8 @@ tests/test_api.py
 Current known baseline:
 
 ```text
-200 passed
+full backend regression: passed
+pytest collection: 261 tests collected
 ```
 
 Current automated regression command:
@@ -1078,8 +1078,8 @@ Targeted Milestone 6.4 validation:
 
 # 30. Immediate Next Candidate
 
-Phase 6 is complete. Phase 7 is in progress. Milestones 7.1 and 7.2 are
-complete.
+Phase 6 is complete. Phase 7 remains in progress. Milestones 7.1, 7.2, and
+7.3 are complete.
 
 The deterministic Demo Mode overview uses an explicit four-tool allow-list:
 bookkeeping summary, AI categorization review queue, reconciliation review
@@ -1095,7 +1095,7 @@ focused Phase 7.1 tests: passed
 focused Phase 7.2 tests: passed
 existing analytics/Assistant/RAG subset: passed
 full backend regression: passed
-pytest collection: 244 tests collected
+pytest collection: 261 tests collected
 git diff --check: passed
 ```
 
@@ -1133,15 +1133,71 @@ of Accounts rows. The optional bind-safe `exclude_transaction_id` defense is
 applied before ranking and row limiting; the existing `category` versus
 `accounting_category_id` compatibility limitation remains unchanged.
 
+## Phase 7.3 — Reconciliation Investigation Drill-Down and Evidence Composition
+
+Phase 7.3 is complete. It adds deterministic, read-only investigation for one
+bank transaction through the pure
+`python/reconciliation_investigation.py` permission contract and the existing
+safe `investigate_reconciliation_issue()` tool.
+
+The exact Phase 7.3 allow-list is:
+
+* `investigate_reconciliation_issue`
+
+The Phase 7.3 runner remains in `python/ai_assistant.py`, validates the fixed
+one-tool plan, and executes through `_execute_tool()` exactly once. The
+existing analytics result shape, `TOOL_REGISTRY`, and strict tool schema are
+reused. Phase 7.1 remains limited to its four overview tools, and Phase 7.2
+remains limited to `investigate_uncategorized_transaction`; neither boundary
+was expanded.
+
+The safe path performs a bind-safe SELECT with a LEFT JOIN and deterministic
+amount, date, and description evidence. It performs no UPDATE, INSERT, DELETE,
+commit, audit write, or reconciliation mutation. The mutating
+`investigate_bank_transaction()` function and its
+`POST /bookkeeping/reconciliation/{bank_transaction_id}/investigate` route are
+explicitly excluded.
+
+The Phase 7.3 permission boundary also excludes `run_reconciliation`,
+`confirm_bank_transaction_match`, `reject_bank_transaction_match`,
+`log_audit_event`, `get_audit_log`, category approval/rejection/assignment and
+categorization persistence tools, the Phase 7.1 overview tools, and the Phase
+7.2 categorization investigation tool. These remain available only in their
+existing workflows and were not removed globally.
+
+MATCHED remains the authoritative stored state; POSSIBLE_MATCH and
+NO_MATCH/unmatched remain human-reviewable, and strong evidence never confirms
+automatically. The formatter distinguishes stored state from retained match
+metadata, including rows that are MATCHED while retaining older
+`POSSIBLE_MATCH` metadata. `match_confidence` remains stored reconciliation
+metadata, never AI confidence or a correctness probability. Every response
+states that no reconciliation state was changed.
+
+The evidence contract preserves `amount_difference`, `amount_matches`,
+`date_difference_days`, `description_token_overlap`, linked candidate facts,
+stored `match_type`, stored `match_confidence`, assessment code/explanation,
+and `requires_human_review`.
+
+Demo Mode routing supports explicit bank transaction, reconciliation issue, and
+reconciliation item IDs, while generic financial transaction IDs and existing
+queue, overview, categorization, anomaly, and bookkeeping routes remain
+separate. Demo Mode is deterministic and model-free; no paid OpenAI call is
+required, and final reconciliation decisions remain human-controlled.
+
+Current Phase 7.3 verification:
+
+```text
+focused Phase 7.3 tests: passed
+relevant existing analytics/reconciliation/Assistant subset: passed
+full backend regression: passed
+pytest collection: 261 tests collected
+git diff --check: passed
+```
+
 Next candidate milestone:
 
-Phase 7.3 — Reconciliation Investigation Drill-Down and Evidence Composition.
-
-Future scope should safely reuse `investigate_reconciliation_issue()`, keep
-`investigate_bank_transaction()` and all reconciliation writes excluded,
-compose amount/date/description evidence, preserve possible-match human
-review semantics, route deterministically in Demo Mode, and retain
-`_execute_tool()` as the execution boundary without requiring paid OpenAI.
+Phase 7.4 — Cross-Issue Investigation Composition / Read-Only Investigation
+Synthesis.
 
 # 31. Next Milestone Evaluation Criteria
 

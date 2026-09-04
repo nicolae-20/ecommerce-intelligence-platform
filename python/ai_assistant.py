@@ -14,6 +14,10 @@ from financial_investigation import (
     PHASE_7_1_INVESTIGATION_TOOL_PLAN,
     compose_financial_investigation_overview,
 )
+from reconciliation_investigation import (
+    PHASE_7_3_RECONCILIATION_ALLOWLIST,
+    PHASE_7_3_RECONCILIATION_TOOL_PLAN,
+)
 from llm_categorizer import AI_CONFIDENCE_THRESHOLD
 
 
@@ -87,7 +91,8 @@ def _extract_top_limit(question: str, default: int = 10) -> int:
 
 def _extract_bank_transaction_id(question: str) -> int | None:
     match = re.search(
-        r"\bbank\s+transaction(?:\s+id)?\s*#?\s*(\d+)\b",
+        r"\b(?:bank\s+transaction(?:\s+id)?|"
+        r"reconciliation\s+(?:issue|item)(?:\s+id)?)\s*#?\s*(\d+)\b",
         question,
         re.IGNORECASE,
     )
@@ -450,7 +455,7 @@ def _select_tools(question: str) -> list[str]:
     has_reconciliation_investigation_language = bool(
         re.search(
             r"\b(?:why|investigate|investigation|explain|"
-            r"evidence|possible match|match confidence)\b",
+            r"evidence|compare|comparison|possible match|match confidence)\b",
             question_lower,
         )
     )
@@ -782,6 +787,30 @@ def _ask_assistant_demo(
             )
             continue
 
+        if tool_name == "investigate_reconciliation_issue":
+            arguments = _get_demo_tool_arguments(
+                tool_name,
+                question,
+            )
+            result = _run_phase_7_3_reconciliation_investigation(
+                arguments["bank_transaction_id"],
+            )
+
+            results.append(
+                {
+                    "tool_name": tool_name,
+                    "result": result,
+                }
+            )
+
+            messages.append(
+                _format_tool_result(
+                    tool_name,
+                    result,
+                )
+            )
+            continue
+
         arguments = _get_demo_tool_arguments(
             tool_name,
             question,
@@ -863,6 +892,32 @@ def _run_phase_7_2_categorization_investigation(
 
     raise ValueError(
         "Phase 7.2 categorization investigation plan is empty"
+    )
+
+
+def _run_phase_7_3_reconciliation_investigation(
+    bank_transaction_id: int,
+) -> Any:
+    """Execute the fixed Phase 7.3 read-only plan through the executor."""
+    for tool_name in PHASE_7_3_RECONCILIATION_TOOL_PLAN:
+        if tool_name not in PHASE_7_3_RECONCILIATION_ALLOWLIST:
+            raise ValueError(
+                "Tool is not allowed for the Phase 7.3 reconciliation "
+                "investigation: "
+                f"{tool_name}"
+            )
+
+    if len(PHASE_7_3_RECONCILIATION_TOOL_PLAN) != 1:
+        raise ValueError(
+            "Phase 7.3 reconciliation investigation plan must contain "
+            "exactly one tool"
+        )
+
+    return _execute_tool(
+        PHASE_7_3_RECONCILIATION_TOOL_PLAN[0],
+        {
+            "bank_transaction_id": bank_transaction_id,
+        },
     )
 
 def _format_bookkeeping_summary(result: Any) -> str:
@@ -1038,6 +1093,7 @@ def _format_reconciliation_investigation(result: Any) -> str:
     match = result["match"]
     evidence = result["evidence"]
     assessment = result["assessment"]
+    stored_status = bank["status"]
 
     amount = float(bank["amount"])
 
@@ -1049,14 +1105,23 @@ def _format_reconciliation_investigation(result: Any) -> str:
             f"amount €{amount:.2f}, "
             f"status {bank['status']}."
         ),
+        f"Stored reconciliation state: {stored_status}.",
         (
-            f"Stored match type: "
-            f"{match['match_type'] or 'None'}; "
-            f"confidence: "
-            + (
-                f"{float(match['match_confidence']) * 100:.0f}%."
-                if match["match_confidence"] is not None
-                else "N/A."
+            (
+                "Stored reconciliation match metadata is retained for "
+                "this matched state."
+                if stored_status == "MATCHED"
+                else (
+                    f"Stored match type: "
+                    f"{match['match_type'] or 'None'}; "
+                    f"match confidence: "
+                    + (
+                        f"{float(match['match_confidence']) * 100:.0f}% "
+                        "(stored reconciliation match metadata)."
+                        if match["match_confidence"] is not None
+                        else "N/A (stored reconciliation match metadata)."
+                    )
+                )
             )
         ),
     ]
@@ -1096,6 +1161,17 @@ def _format_reconciliation_investigation(result: Any) -> str:
                 else "description token overlap unavailable."
             )
         )
+        amount_matches = evidence.get("amount_matches")
+        lines.append(
+            "Amount match: "
+            + (
+                "yes."
+                if amount_matches is True
+                else "no."
+                if amount_matches is False
+                else "unavailable."
+            )
+        )
     else:
         lines.append(
             "No linked financial transaction candidate is stored."
@@ -1104,6 +1180,21 @@ def _format_reconciliation_investigation(result: Any) -> str:
     lines.append(
         f"Assessment: {assessment['explanation']}"
     )
+
+    if stored_status == "MATCHED":
+        lines.append(
+            "The stored reconciliation state is matched; no new "
+            "confirmation is required."
+        )
+    elif match["match_type"] == "POSSIBLE_MATCH":
+        lines.append(
+            "This is a possible match, not a confirmed reconciliation."
+        )
+    elif match["match_type"] in {"NO_MATCH", None}:
+        lines.append(
+            "No confirmed reconciliation match is established from the "
+            "current record."
+        )
 
     if result["requires_human_review"]:
         lines.append(

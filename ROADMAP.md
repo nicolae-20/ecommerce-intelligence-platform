@@ -26,9 +26,8 @@ Do not mark a milestone complete until its Definition of Done has been satisfied
 Current verified test baseline:
 
 ```text
-200 passed
-0 failed
-0 errors
+full backend regression: passed
+pytest collection: 261 tests collected
 ```
 
 Current automated regression command:
@@ -42,7 +41,7 @@ Credential-history remediation is complete and fresh-clone validated.
 Current next area:
 
 ```text
-Categorization Investigation Drill-Down
+Cross-Issue Investigation Composition / Read-Only Investigation Synthesis
 ```
 
 ---
@@ -1421,17 +1420,108 @@ Validation:
 
 ## Milestone 7.3 — Reconciliation Investigation Drill-Down and Evidence Composition
 
-Next candidate; do not implement as part of Phase 7.2 closure.
+Status: complete.
 
-Agent may:
+Phase 7.3 adds a deterministic, backend-only, read-only drill-down for one
+bank transaction. The pure `python/reconciliation_investigation.py` module
+defines the independent one-tool permission contract:
 
-1. inspect unmatched items
-2. retrieve candidate matches
-3. compare evidence
-4. rank candidates
-5. explain recommendation
+* `investigate_reconciliation_issue`
 
-Human confirms final action.
+The Phase 7.3 runner remains in `python/ai_assistant.py` and validates the fixed
+one-tool plan before invoking `_execute_tool()` exactly once. The existing safe
+`investigate_reconciliation_issue()` tool, `TOOL_REGISTRY`, strict tool schema,
+and analytics result shape are reused. No second Assistant stack, autonomous
+loop, API/frontend/schema change, or accounting write was introduced.
+
+The Phase 7.1 allow-list remains exactly:
+
+* `get_bookkeeping_summary`
+* `get_ai_review_queue`
+* `get_reconciliation_review`
+* `get_financial_anomalies`
+
+The Phase 7.2 allow-list remains exactly:
+
+* `investigate_uncategorized_transaction`
+
+Phase 7.3 uses only the safe read-only path:
+
+```text
+question
+    → bank/reconciliation ID extraction
+    → deterministic Phase 7.3 routing
+    → one-tool plan validation
+    → _execute_tool()
+    → investigate_reconciliation_issue()
+    → deterministic evidence
+    → formatter
+```
+
+The safe path performs a bind-safe SELECT with a LEFT JOIN to the linked
+financial transaction, deterministic amount/date/description evidence, and no
+UPDATE, INSERT, DELETE, commit, audit write, or reconciliation mutation. The
+unsafe `investigate_bank_transaction()` path still updates
+`bank_transactions`, inserts an `audit_log` row, and commits. The
+`POST /bookkeeping/reconciliation/{bank_transaction_id}/investigate` route uses
+that unsafe function and is not reused by Phase 7.3.
+
+The Phase 7.3 permission boundary also excludes `run_reconciliation`,
+`confirm_bank_transaction_match`, `reject_bank_transaction_match`,
+`log_audit_event`, `get_audit_log`, category approval/rejection/assignment and
+categorization persistence tools, the Phase 7.1 overview tools, and the Phase
+7.2 categorization investigation tool. These functions remain available only
+where their existing workflows explicitly allow them; they were not removed
+globally.
+
+Reconciliation state semantics remain explicit: MATCHED is the authoritative
+stored state and does not require new review; POSSIBLE_MATCH is never confirmed
+and always remains human-reviewable; NO_MATCH/unmatched and other unresolved
+states require review. Strong deterministic evidence never confirms a match.
+
+The formatter distinguishes bank facts, stored reconciliation state, linked
+candidate facts, stored match metadata, deterministic evidence, assessment, and
+human-review requirements. A stored MATCHED row may retain older
+`match_type = POSSIBLE_MATCH` metadata; the formatter now keeps that metadata
+separate from the authoritative matched state. This was a clarity fix, not a
+database-state migration. The preserved evidence contract includes
+`amount_difference`, `amount_matches`, `date_difference_days`,
+`description_token_overlap`, linked candidate facts, stored `match_type`,
+stored `match_confidence`, assessment code/explanation, and
+`requires_human_review`. `match_confidence` remains stored reconciliation
+metadata, not AI confidence, correctness probability, approval confidence, or
+an investigation score. Output explicitly states:
+
+```text
+No reconciliation state was changed.
+```
+
+Demo Mode is deterministic and model-free; no paid OpenAI call, explanation
+model, or matching model is required. Existing optional OpenAI compatibility and
+the safe tool schema remain unchanged. Routing supports explicit bank
+transaction, reconciliation issue, and reconciliation item IDs while generic
+`transaction <id>` remains financial-transaction context. Ordinary display,
+queue, confirmation/rejection, categorization, overview, anomaly, and
+bookkeeping requests retain their existing routes.
+
+Validation:
+
+* focused Phase 7.3 tests: passed
+* relevant existing analytics/reconciliation/Assistant subset: passed
+* full backend regression: passed
+* pytest collection: 261 tests collected
+* `git diff --check`: passed
+
+### Definition of Done
+
+* [x] deterministic read-only single-bank-transaction drill-down implemented
+* [x] exact one-tool permission boundary enforced
+* [x] safe reconciliation investigation reused through `_execute_tool()`
+* [x] Phase 7.1 and 7.2 permission boundaries remain isolated
+* [x] reconciliation evidence and state semantics remain deterministic
+* [x] possible matches remain human-reviewable
+* [x] Demo Mode works without paid OpenAI calls
+* [x] focused, existing regression, and full backend tests pass
 
 ---
 
@@ -2185,7 +2275,8 @@ Phase 6 — AI Categorization Quality is complete through Milestone 6.4.
 
 Phase 7.1 — Read-Only Investigation Contract and Deterministic Overview
 Orchestrator is complete. Phase 7.2 — Categorization Investigation
-Drill-Down is complete.
+Drill-Down is complete. Phase 7.3 — Reconciliation Investigation Drill-Down
+and Evidence Composition is complete.
 
 Completed:
 
@@ -2211,13 +2302,10 @@ full regression:
 Next candidate milestone:
 
 ```text
-Phase 7.3 — Reconciliation Investigation Drill-Down and Evidence Composition
+Phase 7.4 — Cross-Issue Investigation Composition / Read-Only Investigation Synthesis
 ```
 
-Begin with inspection and implementation planning only. Focus on safely
-reusing `investigate_reconciliation_issue()`, deterministic Demo routing,
-reconciliation evidence composition, amount/date/description comparisons,
-possible-match human-review semantics, and keeping
-`investigate_bank_transaction()` plus all reconciliation writes excluded.
-Preserve `_execute_tool()` as the execution boundary and do not require paid
-OpenAI.
+Do not implement this candidate as part of Phase 7.3 closure. Any future scope
+should compose categorization and reconciliation findings read-only, preserve
+separate permission boundaries and deterministic provenance, and keep all
+accounting decisions human-controlled without requiring paid OpenAI.

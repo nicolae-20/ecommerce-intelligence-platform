@@ -199,7 +199,7 @@ def test_phase6_3_investigation_passes_type_and_stays_read_only(monkeypatch):
         examples=[],
     )
     monkeypatch.setattr(analytics, "get_connection", lambda: Connection())
-    monkeypatch.setattr(accounting_rag, "get_accounting_context", lambda description, vendor: context)
+    monkeypatch.setattr(accounting_rag, "get_accounting_context", lambda description, vendor, **kwargs: context)
 
     def fake_suggest(**kwargs):
         captured["types"].append(kwargs["transaction_type"])
@@ -4004,7 +4004,7 @@ def test_uncategorized_investigation_read_only_contract(monkeypatch):
     monkeypatch.setattr(
         accounting_rag,
         "get_accounting_context",
-        lambda description, vendor: context,
+        lambda description, vendor, **kwargs: context,
     )
     monkeypatch.setattr(
         llm_categorizer,
@@ -4135,7 +4135,7 @@ def test_uncategorized_investigation_rejects_invalid_demo_category(
     monkeypatch.setattr(
         accounting_rag,
         "get_accounting_context",
-        lambda description, vendor: context,
+        lambda description, vendor, **kwargs: context,
     )
     monkeypatch.setattr(
         llm_categorizer,
@@ -4387,6 +4387,7 @@ def test_demo_assistant_executes_uncategorized_investigation_generically(
     assert calls == [
         {
             "transaction_id": 7,
+            "demo_only": True,
         }
     ]
     assert "Read-only recommendation: Software" in response.message

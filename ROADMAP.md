@@ -1344,21 +1344,84 @@ git diff --check: passed
 
 ## Milestone 7.2 — Categorization Investigation Drill-Down
 
-Next candidate; begin with inspection and implementation planning only.
+Status: complete.
 
-For each selected transaction:
+Phase 7.2 adds deterministic, read-only categorization investigation for one
+financial transaction. The pure `python/categorization_investigation.py`
+module defines the independent one-tool permission contract:
 
-1. retrieve data
-2. retrieve historical evidence
-3. assess likely category
-4. report confidence/evidence
-5. recommend action
+* `investigate_uncategorized_transaction`
 
-Do not finalize automatically.
+The Demo drill-down runner remains in `python/ai_assistant.py` and executes
+through `_execute_tool()` exactly once. It reuses the existing analytics
+investigation path, trusted accounting RAG, categorization validation, and
+confidence semantics. No second Assistant stack or autonomous tool loop was
+introduced, and no frontend, API, schema, or accounting write behavior was
+added.
+
+The Phase 7.1 overview remains unchanged with exactly these four tools:
+
+* `get_bookkeeping_summary`
+* `get_ai_review_queue`
+* `get_reconciliation_review`
+* `get_financial_anomalies`
+
+Phase 7.2 does not expand those overview permissions. Category approval,
+rejection, assignment, AI suggestion persistence, reconciliation actions,
+bank-transaction investigation, and audit writes remain outside its
+allow-list. Final accounting decisions remain human-controlled.
+
+Demo categorization now supplies an internal deterministic option and calls
+`suggest_transaction_category_demo()` directly. Therefore Demo Assistant
+categorization cannot be redirected to paid OpenAI categorization by
+`AI_CATEGORIZATION_MODE=openai`. The internal option is not exposed in
+OpenAI `TOOL_DEFINITIONS`; normal configured categorizer behavior outside
+this Demo flow is unchanged. Existing confidence, Chart of Accounts, and
+transaction-type validation are reused rather than duplicated.
+
+Missing transactions retain deterministic not-found behavior. Already
+categorized transactions report their final accounting category without a new
+recommendation or RAG generation. Uncategorized transactions receive a
+validated read-only recommendation, trusted finalized historical evidence,
+and `requires_human_review = True`; high confidence never implies approval.
+
+Final accounting category, stored `ai_suggested_category` / `ai_confidence`,
+the new recommendation, and trusted historical evidence remain distinct.
+Recommendation confidence is categorizer confidence; stored `ai_confidence`
+belongs to the prior suggestion; and `retrieval_score` is relevance only, not
+AI confidence, correctness probability, approval confidence, or an aggregate
+investigation score.
+
+Trusted RAG continues to require a non-null
+`financial_transactions.accounting_category_id`, an active accounting
+category join, and `account_name` as the trusted label. The optional
+`exclude_transaction_id` defense uses a bind parameter before ranking and row
+limiting, without changing ranking weights or trusted-label semantics. It is
+supplied only by categorization investigation. The existing compatibility
+limitation that the investigation gate uses legacy `category` while RAG trust
+uses `accounting_category_id` remains intentionally preserved.
+
+Deterministic routing supports transaction-specific investigation, evidence,
+history, and review questions while preserving ordinary transaction queries,
+reconciliation precedence, anomaly routing, and the Phase 7.1 overview.
+Formatting distinguishes transaction type, final category, stored advisory
+suggestion, new read-only recommendation, trusted evidence, retrieval
+explainability, conflicts, confidence, and the explicit no-write/human-review
+requirement.
+
+Validation:
+
+* focused Phase 7.2 tests: passed
+* relevant analytics/Assistant/RAG subset: passed
+* full backend regression: passed
+* pytest collection baseline: 244 tests collected
+* `git diff --check`: passed
 
 ---
 
-## Milestone 7.3 — Reconciliation Investigation Agent
+## Milestone 7.3 — Reconciliation Investigation Drill-Down and Evidence Composition
+
+Next candidate; do not implement as part of Phase 7.2 closure.
 
 Agent may:
 
@@ -2121,7 +2184,8 @@ full regression:
 Phase 6 — AI Categorization Quality is complete through Milestone 6.4.
 
 Phase 7.1 — Read-Only Investigation Contract and Deterministic Overview
-Orchestrator is complete.
+Orchestrator is complete. Phase 7.2 — Categorization Investigation
+Drill-Down is complete.
 
 Completed:
 
@@ -2147,13 +2211,13 @@ full regression:
 Next candidate milestone:
 
 ```text
-Phase 7.2 — Categorization Investigation Drill-Down
+Phase 7.3 — Reconciliation Investigation Drill-Down and Evidence Composition
 ```
 
 Begin with inspection and implementation planning only. Focus on safely
-composing `investigate_uncategorized_transaction()`, deterministic Demo
-behavior, trusted historical accounting evidence, RAG explainability,
-category-conflict evidence, and keeping stored AI suggestions distinct from
-accounting truth. Ensure categorization drill-down cannot unexpectedly invoke
-paid OpenAI, exposes no category approval/rejection/assignment writes, and
-preserves `_execute_tool()` as the execution boundary.
+reusing `investigate_reconciliation_issue()`, deterministic Demo routing,
+reconciliation evidence composition, amount/date/description comparisons,
+possible-match human-review semantics, and keeping
+`investigate_bank_transaction()` plus all reconciliation writes excluded.
+Preserve `_execute_tool()` as the execution boundary and do not require paid
+OpenAI.

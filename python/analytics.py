@@ -1036,6 +1036,7 @@ def get_ai_categorization_review_queue():
 def investigate_uncategorized_transaction(
     transaction_id,
     client=None,
+    demo_only=False,
 ):
     from accounting_rag import (
         get_accounting_context,
@@ -1043,6 +1044,7 @@ def investigate_uncategorized_transaction(
     )
     from llm_categorizer import (
         suggest_transaction_category,
+        suggest_transaction_category_demo,
         validate_category_suggestion,
     )
 
@@ -1116,16 +1118,26 @@ def investigate_uncategorized_transaction(
     context = get_accounting_context(
         description=row[3],
         vendor=row[6],
+        exclude_transaction_id=transaction_id,
     )
 
-    suggestion = suggest_transaction_category(
-        description=row[3],
-        vendor=row[6],
-        amount=float(row[4]),
-        client=client,
-        context=context,
-        transaction_type=row[2],
-    )
+    if demo_only:
+        suggestion = suggest_transaction_category_demo(
+            description=row[3],
+            vendor=row[6],
+            amount=float(row[4]),
+            context=context,
+            transaction_type=row[2],
+        )
+    else:
+        suggestion = suggest_transaction_category(
+            description=row[3],
+            vendor=row[6],
+            amount=float(row[4]),
+            client=client,
+            context=context,
+            transaction_type=row[2],
+        )
 
     # Validate even in deterministic Demo Mode. The existing categorizer
     # validates model responses, but Demo Mode should obey the same trust

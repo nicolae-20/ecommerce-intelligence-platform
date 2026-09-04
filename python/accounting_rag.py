@@ -261,6 +261,7 @@ def rank_accounting_examples(
 def get_accounting_context(
     description: str | None,
     vendor: str | None,
+    exclude_transaction_id: int | None = None,
 ) -> AccountingContext:
     connection = get_connection()
 
@@ -312,6 +313,17 @@ def get_accounting_context(
             # no longer automatically consume all five
             # final context slots.
             if vendor and vendor.strip():
+                vendor_exclusion = ""
+                vendor_binds = {"vendor": vendor.strip()}
+
+                if exclude_transaction_id is not None:
+                    vendor_exclusion = """
+                      AND ft.transaction_id != :exclude_transaction_id
+                    """
+                    vendor_binds["exclude_transaction_id"] = (
+                        exclude_transaction_id
+                    )
+
                 cursor.execute("""
                     SELECT
                         ft.transaction_id,
@@ -327,11 +339,10 @@ def get_accounting_context(
                       AND ft.vendor IS NOT NULL
                       AND LOWER(ft.vendor)
                           LIKE '%' || LOWER(:vendor) || '%'
+                      {vendor_exclusion}
                     ORDER BY ft.transaction_id
                     FETCH FIRST 20 ROWS ONLY
-                """, {
-                    "vendor": vendor.strip(),
-                })
+                """.format(vendor_exclusion=vendor_exclusion), vendor_binds)
 
                 add_candidates(
                     cursor.fetchall()
@@ -342,6 +353,17 @@ def get_accounting_context(
             for keyword in _description_tokens(
                 description
             ):
+                description_exclusion = ""
+                description_binds = {"keyword": keyword}
+
+                if exclude_transaction_id is not None:
+                    description_exclusion = """
+                      AND ft.transaction_id != :exclude_transaction_id
+                    """
+                    description_binds["exclude_transaction_id"] = (
+                        exclude_transaction_id
+                    )
+
                 cursor.execute("""
                     SELECT
                         ft.transaction_id,
@@ -357,11 +379,12 @@ def get_accounting_context(
                       AND ft.description IS NOT NULL
                       AND LOWER(ft.description)
                           LIKE '%' || LOWER(:keyword) || '%'
+                      {description_exclusion}
                     ORDER BY ft.transaction_id
                     FETCH FIRST 20 ROWS ONLY
-                """, {
-                    "keyword": keyword,
-                })
+                """.format(
+                    description_exclusion=description_exclusion,
+                ), description_binds)
 
                 add_candidates(
                     cursor.fetchall()

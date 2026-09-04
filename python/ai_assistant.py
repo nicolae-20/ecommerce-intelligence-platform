@@ -5,6 +5,10 @@ import calendar
 import re
 
 from ai_tools import TOOL_REGISTRY
+from categorization_investigation import (
+    PHASE_7_2_CATEGORIZATION_ALLOWLIST,
+    PHASE_7_2_CATEGORIZATION_TOOL_PLAN,
+)
 from financial_investigation import (
     PHASE_7_1_INVESTIGATION_ALLOWLIST,
     PHASE_7_1_INVESTIGATION_TOOL_PLAN,
@@ -356,6 +360,14 @@ def _select_tools(question: str) -> list[str]:
         )
     )
 
+    has_categorization_investigation_language = bool(
+        re.search(
+            r"\b(?:why|investigate|investigation|recommend|"
+            r"recommendation|context|evidence|historical|review)\b",
+            question_lower,
+        )
+    )
+
     wants_uncategorized_investigation = (
         transaction_id is not None
         and (
@@ -379,11 +391,17 @@ def _select_tools(question: str) -> list[str]:
                         question_lower,
                     )
                 )
-                and bool(
-                    re.search(
-                        r"\b(?:recommend|recommendation)\b",
-                        question_lower,
-                    )
+                and has_categorization_investigation_language
+            )
+            or "investigate" in question_lower
+            or (
+                "historical" in question_lower
+                and "example" in question_lower
+            )
+            or bool(
+                re.search(
+                    r"\bneeds?\s+review\b",
+                    question_lower,
                 )
             )
         )
@@ -444,6 +462,9 @@ def _select_tools(question: str) -> list[str]:
             or "unmatched" in question_lower
         )
     )
+
+    if wants_reconciliation_investigation:
+        wants_uncategorized_investigation = False
 
     has_financial_analytics_request = (
         wants_category_spending
@@ -737,6 +758,30 @@ def _ask_assistant_demo(
             )
             continue
 
+        if tool_name == "investigate_uncategorized_transaction":
+            arguments = _get_demo_tool_arguments(
+                tool_name,
+                question,
+            )
+            result = _run_phase_7_2_categorization_investigation(
+                arguments["transaction_id"],
+            )
+
+            results.append(
+                {
+                    "tool_name": tool_name,
+                    "result": result,
+                }
+            )
+
+            messages.append(
+                _format_tool_result(
+                    tool_name,
+                    result,
+                )
+            )
+            continue
+
         arguments = _get_demo_tool_arguments(
             tool_name,
             question,
@@ -787,6 +832,37 @@ def _run_phase_7_1_investigation_overview() -> dict[str, Any]:
 
     return compose_financial_investigation_overview(
         executed_results
+    )
+
+
+def _run_phase_7_2_categorization_investigation(
+    transaction_id: int,
+) -> Any:
+    """Execute the fixed Phase 7.2 Demo drill-down through the executor."""
+    for tool_name in PHASE_7_2_CATEGORIZATION_TOOL_PLAN:
+        if tool_name not in PHASE_7_2_CATEGORIZATION_ALLOWLIST:
+            raise ValueError(
+                "Tool is not allowed for the Phase 7.2 categorization "
+                "investigation: "
+                f"{tool_name}"
+            )
+
+    if len(PHASE_7_2_CATEGORIZATION_TOOL_PLAN) != 1:
+        raise ValueError(
+            "Phase 7.2 categorization investigation plan must contain "
+            "exactly one tool"
+        )
+
+    return _execute_tool(
+        PHASE_7_2_CATEGORIZATION_TOOL_PLAN[0],
+        {
+            "transaction_id": transaction_id,
+            "demo_only": True,
+        },
+    )
+
+    raise ValueError(
+        "Phase 7.2 categorization investigation plan is empty"
     )
 
 def _format_bookkeeping_summary(result: Any) -> str:
@@ -847,9 +923,9 @@ def _format_uncategorized_investigation(result: Any) -> str:
 
     if result["investigation_status"] == "ALREADY_CATEGORIZED":
         return (
-            f"Transaction {transaction['transaction_id']} is already "
-            f"categorized as {transaction['category']}. "
-            f"No uncategorized-transaction recommendation was generated."
+            f"Transaction {transaction['transaction_id']} has final "
+            f"accounting category {transaction['category']}. "
+            f"No new uncategorized-transaction recommendation was generated."
         )
 
     recommendation = result["recommendation"]
@@ -937,8 +1013,10 @@ def _format_uncategorized_investigation(result: Any) -> str:
         f"Transaction {transaction['transaction_id']} remains "
         f"uncategorized: {transaction['description'] or 'No description'}, "
         f"vendor {transaction['vendor'] or 'No vendor'}, "
+        f"transaction type {transaction.get('transaction_type') or 'N/A'}, "
         f"amount €{abs(float(transaction['amount'])):.2f}. "
         f"{stored_suggestion_text}"
+        f"New read-only recommendation generated for review. "
         f"Read-only recommendation: {recommendation['category']} at "
         f"{float(recommendation['confidence']) * 100:.0f}% confidence. "
         f"Supporting confirmed examples: "
@@ -946,7 +1024,8 @@ def _format_uncategorized_investigation(result: Any) -> str:
         f"{retrieval_text}"
         f"{conflict_text}"
         f"{recommendation['rationale']} "
-        f"Final categorization requires human review and approval."
+        f"Final accounting category: not assigned. No accounting change was "
+        f"made. Final categorization requires human review and approval."
     )
 
 

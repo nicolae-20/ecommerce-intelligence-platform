@@ -25,9 +25,11 @@ def tool_get_ai_review_queue():
 
 def tool_investigate_uncategorized_transaction(
     transaction_id: int,
+    demo_only: bool = False,
 ):
     return investigate_uncategorized_transaction(
         transaction_id=transaction_id,
+        demo_only=demo_only,
     )
 
 

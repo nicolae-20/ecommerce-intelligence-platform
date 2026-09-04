@@ -1078,8 +1078,8 @@ Targeted Milestone 6.4 validation:
 
 # 30. Immediate Next Candidate
 
-Phase 7 is in progress. Milestone 7.1 — Read-Only Investigation Contract and
-Deterministic Overview Orchestrator is complete.
+Phase 6 is complete. Phase 7 is in progress. Milestones 7.1 and 7.2 are
+complete.
 
 The deterministic Demo Mode overview uses an explicit four-tool allow-list:
 bookkeeping summary, AI categorization review queue, reconciliation review
@@ -1092,22 +1092,56 @@ Current verification:
 
 ```text
 focused Phase 7.1 tests: passed
-existing Assistant routing subset: passed
+focused Phase 7.2 tests: passed
+existing analytics/Assistant/RAG subset: passed
 full backend regression: passed
-pytest collection: 230 tests collected
+pytest collection: 244 tests collected
 git diff --check: passed
 ```
 
+## Phase 7.2 — Categorization Investigation Drill-Down
+
+Phase 7.2 adds deterministic, read-only Demo categorization investigation for
+one financial transaction. The pure `python/categorization_investigation.py`
+module defines the exact one-tool allow-list:
+
+* `investigate_uncategorized_transaction`
+
+The Demo runner remains in `python/ai_assistant.py` and executes through
+`_execute_tool()`. It reuses the existing analytics investigation path,
+trusted finalized accounting evidence, Chart of Accounts validation,
+confidence validation, and transaction-type semantics. No second Assistant
+stack, autonomous loop, frontend/API/schema change, or accounting write was
+introduced.
+
+Demo orchestration supplies an internal deterministic option so
+`AI_ASSISTANT_MODE=demo` cannot be redirected to paid OpenAI categorization by
+`AI_CATEGORIZATION_MODE=openai`. The option is not exposed in OpenAI tool
+definitions, and normal configured categorizer behavior remains unchanged.
+
+The investigation remains strictly read-only: no UPDATE, INSERT, DELETE,
+commit, approval, rejection, assignment, AI suggestion persistence,
+reconciliation mutation, or audit write is reachable. Missing, already
+categorized, and uncategorized behavior remains explicit, and final
+categorization remains human-controlled.
+
+Final accounting assignments, stored AI suggestions, new read-only
+recommendations, and trusted historical evidence remain distinct. Retrieval
+relevance (`retrieval_score`) remains separate from categorizer confidence.
+Trusted RAG still requires non-null final category IDs joined to active Chart
+of Accounts rows. The optional bind-safe `exclude_transaction_id` defense is
+applied before ranking and row limiting; the existing `category` versus
+`accounting_category_id` compatibility limitation remains unchanged.
+
 Next candidate milestone:
 
-Phase 7.2 — Categorization Investigation Drill-Down.
+Phase 7.3 — Reconciliation Investigation Drill-Down and Evidence Composition.
 
-Begin with inspection and implementation planning only. Focus on safely
-composing `investigate_uncategorized_transaction()`, deterministic Demo
-behavior, trusted historical accounting evidence, RAG explainability,
-retrieval-score versus confidence semantics, category-conflict evidence, and
-keeping stored AI suggestions distinct from accounting truth. No category
-approval, rejection, or assignment writes may be exposed.
+Future scope should safely reuse `investigate_reconciliation_issue()`, keep
+`investigate_bank_transaction()` and all reconciliation writes excluded,
+compose amount/date/description evidence, preserve possible-match human
+review semantics, route deterministically in Demo Mode, and retain
+`_execute_tool()` as the execution boundary without requiring paid OpenAI.
 
 # 31. Next Milestone Evaluation Criteria
 

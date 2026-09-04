@@ -9,7 +9,7 @@ This document describes the current known implementation state.
 Snapshot baseline:
 
 ```text
-122 passed
+200 passed
 0 failed
 0 errors
 ```
@@ -858,7 +858,7 @@ tests/test_api.py
 Current known baseline:
 
 ```text
-122 passed
+200 passed
 ```
 
 Current automated regression command:
@@ -1047,47 +1047,57 @@ Not yet complete.
 
 # 29. Phase 6 Checkpoint
 
-Milestones 6.1, 6.2, and 6.3 are complete.
+Milestones 6.1, 6.2, 6.3, and 6.4 are complete.
 
 Verified backend regression baseline:
 
 ```text
-181 passed
+200 passed
 0 failed
 0 errors
 ```
 
-Targeted Milestone 6.3 validation:
+Milestone 6.4 adds deterministic, read-only Demo Mode categorization
+evaluation. Trusted labels come only from final accounting category assignments
+joined to active Chart of Accounts rows. AI suggestions, confidence values,
+rejections, and restores remain non-authoritative.
+
+The evaluator uses a focused module, loads active categories and trusted
+records read-only, suppresses RAG examples, cannot invoke OpenAI, and requires
+no paid API usage. It reports explicit coverage, primary accuracy, successful
+prediction, validation-failure, confidence, category, transaction-type, and
+confusion metrics. Validation failures reduce prediction coverage and remain in
+the primary accuracy denominator. Final accounting categorization remains
+human-controlled.
+
+Targeted Milestone 6.4 validation:
 
 ```text
-12 passed
+19 passed
 ```
-
-Transaction-type-aware categorization now accepts an optional final `transaction_type` input. Supported values are `SALE`, `EXPENSE`, and `BANK_FEE`; values are normalized and validated before Demo, client, or OpenAI branching, and invalid non-null values are rejected. `transaction_type=None` preserves Phase 6.2 behavior.
-
-Demo Mode treats explicit SALE as Sales Revenue and explicit BANK_FEE as Bank Fees; EXPENSE retains the established deterministic lexical rules. Competing lexical evidence lowers SALE/BANK_FEE suggestions to `DEMO_AMBIGUOUS_CONFIDENCE`. Amount sign is supporting evidence only, not the transaction-type or category decision.
-
-The categorization write path and read-only uncategorized-investigation path both forward transaction type. Chart of Accounts and confidence validation remain active. Trusted RAG retrieval remains based on final accounting assignments, and retrieval relevance remains distinct from AI confidence.
-
-Accounting safety remains unchanged: AI suggestions are advisory, high confidence is not approval, and final accounting categorization remains human-controlled. Demo Mode remains the default and no paid OpenAI use is required.
 
 # 30. Immediate Next Candidate
 
-Milestone 6.4 — Categorization Metrics & Evaluation.
+Phase 7 — Read-Only Financial Investigation Agent.
 
-Begin with inspection and evaluation only, not implementation.
-
-Inspect a deterministic evaluation matrix, category-level accuracy/coverage, high-confidence versus low-confidence behavior, ambiguity/conflict frequency, human-review burden, approved/final history suitability for offline evaluation, and deterministic read-only Demo Mode metrics without paid OpenAI calls.
+Begin with inspection only. Review existing read-only investigation functions,
+anomaly detection, reconciliation and uncategorized investigations, accounting
+evidence/RAG explainability, Assistant tool boundaries, and the read-only data
+surface permitted to an investigation agent. Preserve deterministic Demo Mode,
+`_execute_tool()` as the execution boundary, human-controlled accounting
+writes, and no required paid API usage.
 
 # 31. Next Milestone Evaluation Criteria
 
-Any later metrics work must preserve:
+Any Phase 7 investigation work must preserve:
 
-* human approval for final accounting categorization
+* read-only agent behavior with no accounting writes
+* human approval for final accounting and reconciliation actions
 * trusted final-category history as the RAG evidence boundary
 * retrieval-score / AI-confidence separation
-* confidence and Chart of Accounts validation
-* deterministic, read-only evaluation where possible
+* existing confidence and Chart of Accounts validation
+* deterministic Demo Mode support
+* generic `_execute_tool()` execution boundaries
 * no required paid API usage
 
 ---

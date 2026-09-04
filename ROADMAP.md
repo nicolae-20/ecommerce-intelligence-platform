@@ -26,7 +26,7 @@ Do not mark a milestone complete until its Definition of Done has been satisfied
 Current verified test baseline:
 
 ```text
-122 passed
+200 passed
 0 failed
 0 errors
 ```
@@ -42,7 +42,7 @@ Credential-history remediation is complete and fresh-clone validated.
 Current next area:
 
 ```text
-Natural-Language Financial Querying
+Read-Only Financial Investigation Agent
 ```
 
 ---
@@ -1152,23 +1152,89 @@ full regression:
 
 ## Milestone 6.4 — Categorization Metrics & Evaluation
 
-Next candidate milestone. Begin with inspection and evaluation only; do not implement metrics until the existing evidence and safety boundaries are understood.
+Status: complete.
 
-Inspect:
+Implemented in the focused `python/categorization_evaluation.py` module:
 
-* a deterministic categorization evaluation matrix
-* category-level accuracy and coverage
-* high-confidence versus low-confidence behavior
-* ambiguity/conflict frequency and resulting human-review burden
-* whether approved/final history can support offline evaluation
-* deterministic, read-only Demo Mode measurement without paid OpenAI calls
-* preservation of human approval and trusted-history boundaries
+* additive deterministic `suggest_transaction_category_demo()` wrapper
+* read-only active Chart of Accounts loader
+* read-only trusted categorization-record loader
+* pure deterministic Demo Mode evaluator
+* read-only composition entry point
+
+Trusted labels are limited to historical rows where
+`financial_transactions.accounting_category_id` is non-null and joins to an
+active `accounting_categories` row. The joined `account_name` is the
+`trusted_category`. `ai_suggested_category`, `ai_confidence`, rejected or
+restored suggestions, and legacy category text are not accounting truth.
+
+Evaluation is Demo-only and read-only. It calls deterministic categorization
+directly, cannot be redirected to OpenAI by `AI_CATEGORIZATION_MODE`, does not
+invoke an OpenAI client, suppresses historical RAG examples, leaves
+`context.examples` empty, does not call `get_accounting_context()`, and never
+uses retrieval score as AI confidence. Leave-one-out retrieval is not required
+for this scope.
+
+Predictions retain confidence and active Chart of Accounts validation. Invalid
+predicted categories become explicit validation failures; they reduce
+prediction coverage and remain in the primary accuracy denominator.
+
+Implemented safe metrics include:
+
+* trusted/evaluable/excluded record counts
+* successful, validation-failure, correct, and incorrect prediction counts
+* Demo Mode prediction coverage
+* Demo Mode accuracy on trusted historical labels
+* accuracy among successful predictions
+* high-confidence counts, accuracy, and error rate
+* below-threshold count and suggestion rate
+* transaction-type and trusted-category breakdowns
+* deterministic confusion pairs and validation failures
+
+Denominator invariants are explicit:
+
+* `trusted_labeled_count = evaluable_count + excluded_count`
+* `successful_prediction_count + validation_failure_count = evaluable_count`
+* `correct_prediction_count + incorrect_prediction_count = successful_prediction_count`
+
+Unsupported transaction types and other non-evaluable records are counted as
+explicit exclusions. Fallback/unknown rate and ambiguity/conflict rate remain
+deferred until structured reason codes exist.
+
+Use portfolio-safe terminology such as “Demo Mode accuracy on trusted
+historical labels”, “Demo Mode prediction coverage”, “Demo Mode
+high-confidence accuracy”, “Below-threshold suggestion rate”, “Chart of
+Accounts validation failures”, and “Demo Mode confusion pairs”. Avoid generic
+“AI accuracy”, “model accuracy”, or “accounting correctness”.
+
+Validation:
+
+```text
+targeted:
+19 passed
+
+full regression:
+200 passed
+0 failed
+0 errors
+```
+
+### Definition of Done
+
+* [x] trusted final accounting labels are defined and separated from AI suggestions
+* [x] active Chart of Accounts and trusted records are loaded read-only
+* [x] deterministic Demo-only evaluation cannot invoke paid OpenAI or RAG retrieval
+* [x] confidence and Chart of Accounts validation remain active
+* [x] coverage and accuracy denominators are explicit and tested
+* [x] category and transaction-type breakdowns are deterministic
+* [x] validation failures reduce coverage and remain in primary accuracy
+* [x] no accounting writes or schema changes were introduced
+* [x] targeted tests and the full backend regression pass
 
 ---
 
-Later Phase 6 work may evaluate RAG-aware confidence calibration,
-categorization metrics, and human-feedback quality without weakening the
-trusted-history boundary.
+Later work may evaluate RAG-aware confidence calibration and human-feedback
+quality without weakening the trusted-history boundary.
 
 ---
 
@@ -1939,9 +2005,48 @@ full regression:
 
 ---
 
+## Completion Record 6.4 — Categorization Metrics & Evaluation
+
+Completed deterministic, read-only Demo Mode evaluation against trusted final
+accounting labels.
+
+Implemented:
+
+* focused `python/categorization_evaluation.py` module
+* additive `suggest_transaction_category_demo()` wrapper
+* read-only active Chart of Accounts and trusted-record loaders
+* explicit coverage, accuracy, confidence, breakdown, confusion, and
+  validation-failure metrics
+* Demo-only execution with RAG examples suppressed and no paid OpenAI path
+* denominator invariants that keep validation failures in primary accuracy
+
+Validation:
+
+```text
+targeted:
+19 passed
+
+full regression:
+200 passed
+0 failed
+0 errors
+```
+
+### Definition of Done
+
+* [x] trusted final accounting labels are used as the evaluation ground truth
+* [x] evaluation is deterministic, read-only, and Demo-only
+* [x] active Chart of Accounts and confidence validation remain enforced
+* [x] metric denominators and exclusions are explicit
+* [x] validation failures reduce coverage without inflating primary accuracy
+* [x] no paid OpenAI usage or accounting writes are required
+* [x] targeted tests and the full backend regression pass
+
+---
+
 # CURRENT NEXT ACTION
 
-Phase 6 — AI Categorization Quality is complete through Milestone 6.3.
+Phase 6 — AI Categorization Quality is complete through Milestone 6.4.
 
 Completed:
 
@@ -1949,16 +2054,17 @@ Completed:
 6.1 Unified Categorization Validation and Confidence Contract
 6.2 Deterministic Demo Rule Coverage and Ambiguity Calibration
 6.3 Transaction-Type-Aware Categorization
+6.4 Categorization Metrics & Evaluation
 ```
 
 Verification:
 
 ```text
 targeted:
-12 passed
+19 passed
 
 full regression:
-181 passed
+200 passed
 0 failed
 0 errors
 ```
@@ -1966,7 +2072,12 @@ full regression:
 Next candidate milestone:
 
 ```text
-6.4 Categorization Metrics & Evaluation
+Phase 7 — Read-Only Financial Investigation Agent
 ```
 
-Start with inspection/evaluation, not implementation. Determine how deterministic, read-only evaluation can measure category-level accuracy and coverage, confidence calibration, ambiguity frequency, and human-review burden while preserving approved-history and human-approval boundaries.
+Begin with inspection only. Review existing read-only investigation functions,
+anomaly detection, reconciliation and uncategorized investigations, accounting
+evidence/RAG explainability, Assistant tool boundaries, and the read-only data
+surface permitted to a Financial Investigation Agent. Preserve deterministic
+Demo Mode, `_execute_tool()` as the execution boundary, human-controlled
+accounting writes, and no required paid API usage.

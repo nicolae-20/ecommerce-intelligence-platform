@@ -288,6 +288,34 @@ def _demo_category_suggestion(
     )
 
 
+def suggest_transaction_category_demo(
+    description: str | None,
+    vendor: str | None,
+    amount: float,
+    transaction_type: str | None = None,
+    context: AccountingContext | None = None,
+) -> CategorySuggestion:
+    """Return a deterministic, validated Demo Mode suggestion.
+
+    This entry point intentionally bypasses environment-selected model mode so
+    offline evaluation cannot accidentally invoke OpenAI.
+    """
+    normalized_transaction_type = _normalize_transaction_type(
+        transaction_type
+    )
+    suggestion = _demo_category_suggestion(
+        description=description,
+        vendor=vendor,
+        amount=amount,
+        transaction_type=normalized_transaction_type,
+    )
+
+    return _validate_suggestion_for_context(
+        suggestion=suggestion,
+        context=context,
+    )
+
+
 def suggest_transaction_category(
     description: str | None,
     vendor: str | None,

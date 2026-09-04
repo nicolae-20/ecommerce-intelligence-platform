@@ -5,6 +5,11 @@ import calendar
 import re
 
 from ai_tools import TOOL_REGISTRY
+from financial_investigation import (
+    PHASE_7_1_INVESTIGATION_ALLOWLIST,
+    PHASE_7_1_INVESTIGATION_TOOL_PLAN,
+    compose_financial_investigation_overview,
+)
 from llm_categorizer import AI_CONFIDENCE_THRESHOLD
 
 
@@ -261,6 +266,40 @@ def _select_tools(question: str) -> list[str]:
     transaction_id = _extract_transaction_id(question)
     bank_transaction_id = _extract_bank_transaction_id(question)
 
+    wants_investigation_overview = (
+        transaction_id is None
+        and bank_transaction_id is None
+        and (
+            "financial investigation" in question_lower
+            or "investigation overview" in question_lower
+            or "bookkeeping issues" in question_lower
+            or "current bookkeeping risks" in question_lower
+            or "what should i investigate" in question_lower
+            or (
+                "what needs attention" in question_lower
+                and "summary" not in question_lower
+            )
+            or "financial issues need attention" in question_lower
+            or (
+                "anomal" in question_lower
+                and "review item" in question_lower
+            )
+            or (
+                "financial anomalies" in question_lower
+                and not any(
+                    phrase in question_lower
+                    for phrase in (
+                        "which transaction",
+                        "which accounting anomal",
+                        "unusually large",
+                        "duplicate",
+                        "repeated bank fee",
+                    )
+                )
+            )
+        )
+    )
+
     has_spending_language = bool(
         re.search(r"\b(?:spend|spent|spending)\b", question_lower)
     )
@@ -424,6 +463,9 @@ def _select_tools(question: str) -> list[str]:
     )
 
     tools: list[str] = []
+
+    if wants_investigation_overview:
+        return ["investigate_financial_overview"]
 
     if (
         "bookkeeping summary" in question_lower
@@ -677,6 +719,24 @@ def _ask_assistant_demo(
     messages = []
 
     for tool_name in tool_names:
+        if tool_name == "investigate_financial_overview":
+            result = _run_phase_7_1_investigation_overview()
+
+            results.append(
+                {
+                    "tool_name": tool_name,
+                    "result": result,
+                }
+            )
+
+            messages.append(
+                _format_tool_result(
+                    tool_name,
+                    result,
+                )
+            )
+            continue
+
         arguments = _get_demo_tool_arguments(
             tool_name,
             question,
@@ -705,6 +765,28 @@ def _ask_assistant_demo(
         message="\n\n".join(messages),
         tool_name=", ".join(tool_names),
         tool_result=results,
+    )
+
+
+def _run_phase_7_1_investigation_overview() -> dict[str, Any]:
+    """Execute the fixed Phase 7.1 read-only plan through the executor."""
+    executed_results = []
+
+    for tool_name in PHASE_7_1_INVESTIGATION_TOOL_PLAN:
+        if tool_name not in PHASE_7_1_INVESTIGATION_ALLOWLIST:
+            raise ValueError(
+                f"Tool is not allowed for the Phase 7.1 overview: {tool_name}"
+            )
+
+        executed_results.append(
+            (
+                tool_name,
+                _execute_tool(tool_name),
+            )
+        )
+
+    return compose_financial_investigation_overview(
+        executed_results
     )
 
 def _format_bookkeeping_summary(result: Any) -> str:
@@ -1160,6 +1242,9 @@ def _format_tool_result(
     if tool_name == "get_expense_trends":
         return _format_expense_trends(result)
 
+    if tool_name == "investigate_financial_overview":
+        return _format_financial_investigation_overview(result)
+
     return f"Executed tool: {tool_name}"
 
 def _format_transactions_by_date(result: Any) -> str:
@@ -1352,6 +1437,32 @@ def _format_financial_anomalies(result: Any) -> str:
         "accounting errors. No accounting state was changed; human review "
         "is required before taking action."
     )
+    return "\n".join(lines)
+
+
+def _format_financial_investigation_overview(result: Any) -> str:
+    if not result:
+        return "No financial investigation overview is available."
+
+    lines = [result.get("summary", "Financial investigation overview.")]
+
+    for finding in result.get("findings", []):
+        lines.append(f"- {finding.get('message', 'No finding details.')}")
+
+    lines.append(
+        result.get(
+            "suggested_next_human_action",
+            "Review the evidence before taking accounting action.",
+        )
+    )
+
+    if result.get("requires_human_review"):
+        lines.append(
+            "No accounting state was changed. Human review is required."
+        )
+    else:
+        lines.append("No accounting state was changed.")
+
     return "\n".join(lines)
 
 

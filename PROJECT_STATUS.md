@@ -1078,14 +1078,36 @@ Targeted Milestone 6.4 validation:
 
 # 30. Immediate Next Candidate
 
-Phase 7 — Read-Only Financial Investigation Agent.
+Phase 7 is in progress. Milestone 7.1 — Read-Only Investigation Contract and
+Deterministic Overview Orchestrator is complete.
 
-Begin with inspection only. Review existing read-only investigation functions,
-anomaly detection, reconciliation and uncategorized investigations, accounting
-evidence/RAG explainability, Assistant tool boundaries, and the read-only data
-surface permitted to an investigation agent. Preserve deterministic Demo Mode,
-`_execute_tool()` as the execution boundary, human-controlled accounting
-writes, and no required paid API usage.
+The deterministic Demo Mode overview uses an explicit four-tool allow-list:
+bookkeeping summary, AI categorization review queue, reconciliation review
+queue, and financial anomalies. It executes through `_execute_tool()`,
+preserves structured source provenance, exposes no write actions, and treats
+anomalies as investigation signals. Final accounting decisions remain
+human-controlled and no paid OpenAI dependency is required.
+
+Current verification:
+
+```text
+focused Phase 7.1 tests: passed
+existing Assistant routing subset: passed
+full backend regression: passed
+pytest collection: 230 tests collected
+git diff --check: passed
+```
+
+Next candidate milestone:
+
+Phase 7.2 — Categorization Investigation Drill-Down.
+
+Begin with inspection and implementation planning only. Focus on safely
+composing `investigate_uncategorized_transaction()`, deterministic Demo
+behavior, trusted historical accounting evidence, RAG explainability,
+retrieval-score versus confidence semantics, category-conflict evidence, and
+keeping stored AI suggestions distinct from accounting truth. No category
+approval, rejection, or assignment writes may be exposed.
 
 # 31. Next Milestone Evaluation Criteria
 

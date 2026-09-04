@@ -42,7 +42,7 @@ Credential-history remediation is complete and fresh-clone validated.
 Current next area:
 
 ```text
-Read-Only Financial Investigation Agent
+Categorization Investigation Drill-Down
 ```
 
 ---
@@ -1244,35 +1244,107 @@ Do not create write-capable agents first.
 
 ---
 
-## Milestone 7.1 — Bookkeeping Investigation Agent
+## Milestone 7.1 — Read-Only Investigation Contract and Deterministic Overview Orchestrator
 
-Example request:
+Status: complete.
+
+Implemented a deterministic, backend-only financial investigation overview.
+The focused `python/financial_investigation.py` module contains an immutable
+allow-list, a fixed ordered tool plan, and a pure result composer. It has no
+database connection, analytics execution, or OpenAI calls.
+
+Demo Mode integration in `python/ai_assistant.py` recognizes broad overview
+requests and executes the fixed plan through `_execute_tool()`. No second
+Assistant stack or autonomous tool loop was introduced, and the existing
+`AssistantResponse` structure remains unchanged.
+
+The exact Phase 7.1 allow-list is:
+
+* `get_bookkeeping_summary`
+* `get_ai_review_queue`
+* `get_reconciliation_review`
+* `get_financial_anomalies`
+
+The overview deliberately excludes `investigate_uncategorized_transaction`,
+`investigate_reconciliation_issue`, `investigate_bank_transaction`,
+`get_audit_log`, transaction drill-down tools, category write tools, and
+reconciliation write tools. The first two investigation functions remain
+candidates for later Phase 7 drill-down milestones. In particular,
+`investigate_bank_transaction()` remains a write path and is not safe for this
+overview.
+
+The dedicated immutable allow-list is independent from `TOOL_REGISTRY`, so
+future registry additions are not automatically available. The plan is
+validated before execution; `financial_investigation.py` does not import or
+execute analytics/database functions; no recursive registry orchestration is
+used; and no `UPDATE`, `INSERT`, `DELETE`, commit, or audit write is reachable
+from the overview plan.
+
+The structured overview returns:
+
+* `investigation_type`
+* `summary`
+* `findings`
+* `evidence`
+* `source_tools`
+* `requires_human_review`
+* `suggested_next_human_action`
+
+Nested source evidence is preserved and `source_tools` records deterministic
+execution order. No aggregate agent-confidence or accounting-correctness score
+is introduced. Existing retrieval-score semantics remain unchanged.
+
+Human review is required only when explicit categorization review items,
+reconciliation review items, or financial anomaly signals are present.
+Summary statistics alone do not imply an error. Anomalies remain investigation
+signals and potential issues, never confirmed errors, fraud, or accounting
+mistakes.
+
+Supported broad Demo Mode requests include:
+
+* What financial issues need attention?
+* What should I investigate?
+* Show me current bookkeeping risks.
+* Give me a financial investigation overview.
+* Are there anomalies or review items?
+
+Transaction-ID and reconciliation-ID investigation routes retain their
+existing behavior. Specific anomaly questions retain the anomaly tool route,
+bookkeeping summary requests remain summary requests, and unrelated questions
+do not trigger the overview. A routing review corrected a precision issue where
+a generic “what needs attention” phrase could otherwise swallow a summary
+request.
+
+Phase 7.1 is fully usable in Demo Mode without paid OpenAI access. The Demo
+overview does not invoke an OpenAI client, `investigate_financial_overview` is
+not in OpenAI `TOOL_DEFINITIONS`, and existing OpenAI Assistant behavior is
+unchanged. Optional OpenAI investigation orchestration remains future scope.
+
+Validation:
 
 ```text
-Investigate the bookkeeping issues that need attention.
+focused Phase 7.1 tests: passed
+existing Assistant routing subset: passed
+full backend regression: passed
+pytest collection: 230 tests collected
+git diff --check: passed
 ```
 
-Possible sequence:
+### Definition of Done
 
-```text
-bookkeeping summary
-        ↓
-AI review queue
-        ↓
-reconciliation queue
-        ↓
-relevant transactions
-        ↓
-audit context
-        ↓
-findings
-```
-
-The agent should be able to use multiple read-only tools.
+* [x] deterministic read-only overview contract implemented
+* [x] exact four-tool immutable allow-list enforced
+* [x] fixed ordered execution through `_execute_tool()`
+* [x] nested evidence and deterministic provenance preserved
+* [x] human-review and anomaly semantics remain explicit
+* [x] Demo Mode works without paid OpenAI calls
+* [x] focused and existing routing tests pass
 
 ---
 
-## Milestone 7.2 — Categorization Investigation Agent
+## Milestone 7.2 — Categorization Investigation Drill-Down
+
+Next candidate; begin with inspection and implementation planning only.
 
 For each selected transaction:
 
@@ -2048,6 +2120,9 @@ full regression:
 
 Phase 6 — AI Categorization Quality is complete through Milestone 6.4.
 
+Phase 7.1 — Read-Only Investigation Contract and Deterministic Overview
+Orchestrator is complete.
+
 Completed:
 
 ```text
@@ -2072,12 +2147,13 @@ full regression:
 Next candidate milestone:
 
 ```text
-Phase 7 — Read-Only Financial Investigation Agent
+Phase 7.2 — Categorization Investigation Drill-Down
 ```
 
-Begin with inspection only. Review existing read-only investigation functions,
-anomaly detection, reconciliation and uncategorized investigations, accounting
-evidence/RAG explainability, Assistant tool boundaries, and the read-only data
-surface permitted to a Financial Investigation Agent. Preserve deterministic
-Demo Mode, `_execute_tool()` as the execution boundary, human-controlled
-accounting writes, and no required paid API usage.
+Begin with inspection and implementation planning only. Focus on safely
+composing `investigate_uncategorized_transaction()`, deterministic Demo
+behavior, trusted historical accounting evidence, RAG explainability,
+category-conflict evidence, and keeping stored AI suggestions distinct from
+accounting truth. Ensure categorization drill-down cannot unexpectedly invoke
+paid OpenAI, exposes no category approval/rejection/assignment writes, and
+preserves `_execute_tool()` as the execution boundary.

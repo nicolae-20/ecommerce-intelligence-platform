@@ -26,6 +26,9 @@ SYSTEM_PROMPT = (
     "Choose exactly one category from the provided Chart of Accounts. "
     "If the evidence is weak or ambiguous, still choose the best "
     "available category but return a lower confidence score. "
+    "Treat explicit transaction type as a structural accounting signal; "
+    "amount sign is supporting evidence only and must not redefine it. "
+    "Conflicting evidence should reduce confidence. "
     "Return only JSON with keys: category and confidence. "
     "Confidence must be a number between 0 and 1."
 )
@@ -106,13 +109,27 @@ def _validate_suggestion_for_context(
     )
 
 DEMO_AMBIGUOUS_CONFIDENCE = 0.60
+SUPPORTED_TRANSACTION_TYPES = {"SALE", "EXPENSE", "BANK_FEE"}
+
+
+def _normalize_transaction_type(transaction_type: str | None) -> str | None:
+    if transaction_type is None:
+        return None
+    normalized = str(transaction_type).strip().upper()
+    if normalized not in SUPPORTED_TRANSACTION_TYPES:
+        raise ValueError(
+            "transaction_type must be one of SALE, EXPENSE, or BANK_FEE"
+        )
+    return normalized
 
 
 def _demo_category_suggestion(
     description: str | None,
     vendor: str | None,
     amount: float,
+    transaction_type: str | None = None,
 ) -> CategorySuggestion:
+    transaction_type = _normalize_transaction_type(transaction_type)
     text = " ".join(
         value.strip().lower()
         for value in [description, vendor]
@@ -223,6 +240,26 @@ def _demo_category_suggestion(
             0.88,
         )
 
+    if transaction_type == "SALE":
+        return CategorySuggestion(
+            category="Sales Revenue",
+            confidence=(
+                DEMO_AMBIGUOUS_CONFIDENCE
+                if matches
+                else 0.95
+            ),
+        )
+
+    if transaction_type == "BANK_FEE":
+        return CategorySuggestion(
+            category="Bank Fees",
+            confidence=(
+                DEMO_AMBIGUOUS_CONFIDENCE
+                if any(category != "Bank Fees" for category in matches)
+                else 0.99
+            ),
+        )
+
     if matches:
         ranked_matches = sorted(
             matches.items(),
@@ -257,7 +294,10 @@ def suggest_transaction_category(
     amount: float,
     client: Any | None = None,
     context: AccountingContext | None = None,
+    transaction_type: str | None = None,
 ) -> CategorySuggestion:
+
+    transaction_type = _normalize_transaction_type(transaction_type)
 
     context_text = ""
 
@@ -289,11 +329,15 @@ Transaction:
 Description: {description or "N/A"}
 Vendor: {vendor or "N/A"}
 Amount: {amount}
+Transaction type: {transaction_type or "N/A"}
 
 {context_text}
 
 Choose exactly one category from the available accounting categories above.
 Do not invent categories.
+The explicit transaction type is a structural accounting signal. The amount
+sign is supporting evidence only and must not redefine the transaction type.
+If evidence conflicts, keep the explicit type and reduce confidence.
 """
 
     if client is not None:
@@ -328,6 +372,7 @@ Do not invent categories.
             description=description,
             vendor=vendor,
             amount=amount,
+            transaction_type=transaction_type,
         )
 
         return _validate_suggestion_for_context(

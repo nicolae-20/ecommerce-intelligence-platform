@@ -1045,99 +1045,50 @@ Not yet complete.
 
 ---
 
-# 29. Immediate Next Milestone
+# 29. Phase 6 Checkpoint
 
-Milestone 6.2 — Deterministic Demo Rule Coverage and Ambiguity
-Calibration is complete.
+Milestones 6.1, 6.2, and 6.3 are complete.
 
 Verified backend regression baseline:
 
 ```text
-180 passed
+181 passed
 0 failed
 0 errors
 ```
 
-Targeted Phase 6.2 validation:
+Targeted Milestone 6.3 validation:
 
 ```text
-5 passed
+12 passed
 ```
 
-Phase 6 completed so far:
+Transaction-type-aware categorization now accepts an optional final `transaction_type` input. Supported values are `SALE`, `EXPENSE`, and `BANK_FEE`; values are normalized and validated before Demo, client, or OpenAI branching, and invalid non-null values are rejected. `transaction_type=None` preserves Phase 6.2 behavior.
 
-* 6.1 Unified Categorization Validation and Confidence Contract
-* 6.2 Deterministic Demo Rule Coverage and Ambiguity Calibration
+Demo Mode treats explicit SALE as Sales Revenue and explicit BANK_FEE as Bank Fees; EXPENSE retains the established deterministic lexical rules. Competing lexical evidence lowers SALE/BANK_FEE suggestions to `DEMO_AMBIGUOUS_CONFIDENCE`. Amount sign is supporting evidence only, not the transaction-type or category decision.
 
-Demo Mode now recognizes deterministic evidence for:
+The categorization write path and read-only uncategorized-investigation path both forward transaction type. Chart of Accounts and confidence validation remain active. Trusted RAG retrieval remains based on final accounting assignments, and retrieval relevance remains distinct from AI confidence.
 
-* Software
-* Office Supplies
-* Bank Fees
-* Advertising
-* Utilities
-* Travel
+Accounting safety remains unchanged: AI suggestions are advisory, high confidence is not approval, and final accounting categorization remains human-controlled. Demo Mode remains the default and no paid OpenAI use is required.
 
-Ambiguous lexical evidence is deliberately confidence-downgraded instead of
-being represented as high-confidence.
+# 30. Immediate Next Candidate
 
-Accounting safety remains unchanged:
+Milestone 6.4 — Categorization Metrics & Evaluation.
 
-* AI suggestions remain advisory
-* high confidence does not equal accounting approval
-* final categorization remains human-controlled
-* RAG history remains based on trusted final category assignments
-* retrieval relevance remains distinct from AI confidence
-* no paid OpenAI usage is required for core development
+Begin with inspection and evaluation only, not implementation.
 
-# 30. Immediate Next Query Targets
+Inspect a deterministic evaluation matrix, category-level accuracy/coverage, high-confidence versus low-confidence behavior, ambiguity/conflict frequency, human-review burden, approved/final history suitability for offline evaluation, and deterministic read-only Demo Mode metrics without paid OpenAI calls.
 
-Prepare Milestone 6.3 by inspecting transaction-type-aware categorization.
+# 31. Next Milestone Evaluation Criteria
 
-The current categorizer receives:
+Any later metrics work must preserve:
 
-* description
-* vendor
-* amount
-* accounting context
-
-It does not currently receive `transaction_type`.
-
-Inspect the smallest safe change required to make these values available:
-
-* `SALE`
-* `EXPENSE`
-* `BANK_FEE`
-
-Then evaluate:
-
-* sale-like positive transactions
-* negative sale adjustments
-* positive expense refunds
-* bank-fee refunds
-* category/account-type compatibility
-* behavior when text and transaction type disagree
-* whether amount sign should be supporting evidence rather than the primary
-  transaction-type signal
-
-# 31. Next Milestone Definition of Done
-
-Milestone 6.3 should be defined after caller/signature inspection.
-
-Any implementation must preserve:
-
-* confidence range validation
-* Chart of Accounts validation
-* deterministic Demo Mode
-* ambiguity confidence downgrade
-* trusted final-category RAG history
-* retrieval-score / confidence separation
-* human approval for final categorization
-* read-only investigation behavior
-* OpenAI/client compatibility
+* human approval for final accounting categorization
+* trusted final-category history as the RAG evidence boundary
+* retrieval-score / AI-confidence separation
+* confidence and Chart of Accounts validation
+* deterministic, read-only evaluation where possible
 * no required paid API usage
-* targeted evaluation tests
-* full backend regression
 
 ---
 

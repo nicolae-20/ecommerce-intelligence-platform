@@ -1,4 +1,5 @@
 import sys
+import pytest
 from pathlib import Path
 from llm_categorizer import suggest_transaction_category
 from llm_categorizer import (
@@ -6,6 +7,213 @@ from llm_categorizer import (
     CategorySuggestion,
     is_high_confidence_suggestion,
 )
+
+
+def test_phase6_3_transaction_type_normalization_and_validation():
+    from llm_categorizer import _demo_category_suggestion
+
+    suggestion = _demo_category_suggestion(
+        "Customer order payment", None, 100, " sale "
+    )
+    assert suggestion.category == "Sales Revenue"
+    with pytest.raises(ValueError):
+        _demo_category_suggestion("Unknown", None, 1, "TRANSFER")
+
+
+def test_phase6_3_none_preserves_phase6_2_behavior():
+    from llm_categorizer import _demo_category_suggestion
+
+    baseline = _demo_category_suggestion("Microsoft 365 subscription", None, -20)
+    explicit_none = _demo_category_suggestion(
+        "Microsoft 365 subscription", None, -20, None
+    )
+    assert explicit_none == baseline
+
+
+@pytest.mark.parametrize("amount", [100, -100])
+def test_phase6_3_sale_is_type_authoritative_regardless_of_sign(amount):
+    from llm_categorizer import _demo_category_suggestion
+
+    suggestion = _demo_category_suggestion(
+        "Customer order payment", "Customer", amount, "SALE"
+    )
+    assert suggestion.category == "Sales Revenue"
+    assert suggestion.high_confidence
+
+
+def test_phase6_3_sale_conflict_is_ambiguous():
+    from llm_categorizer import _demo_category_suggestion
+
+    suggestion = _demo_category_suggestion(
+        "Microsoft 365 subscription", None, -20, "SALE"
+    )
+    assert suggestion.category == "Sales Revenue"
+    assert suggestion.confidence == 0.60
+    assert not suggestion.high_confidence
+
+
+def test_phase6_3_expense_keeps_lexical_rules_with_positive_amount():
+    from llm_categorizer import _demo_category_suggestion
+
+    suggestion = _demo_category_suggestion(
+        "Microsoft 365 subscription", None, 20, "EXPENSE"
+    )
+    assert suggestion.category == "Software"
+
+
+@pytest.mark.parametrize("amount", [-5, 5])
+def test_phase6_3_bank_fee_is_type_authoritative_regardless_of_sign(amount):
+    from llm_categorizer import _demo_category_suggestion
+
+    suggestion = _demo_category_suggestion(
+        "Monthly bank fee refund", None, amount, "BANK_FEE"
+    )
+    assert suggestion.category == "Bank Fees"
+    assert suggestion.high_confidence
+
+
+def test_phase6_3_bank_fee_conflict_is_ambiguous():
+    from llm_categorizer import _demo_category_suggestion
+
+    suggestion = _demo_category_suggestion(
+        "Microsoft subscription", None, -5, "BANK_FEE"
+    )
+    assert suggestion.category == "Bank Fees"
+    assert suggestion.confidence == 0.60
+
+
+def test_phase6_3_prompt_includes_type_and_sign_guidance():
+    class Response:
+        output_text = '{"category": "Software", "confidence": 0.9}'
+
+    class Responses:
+        def create(self, **kwargs):
+            self.input = kwargs["input"]
+            return Response()
+
+    class Client:
+        def __init__(self):
+            self.responses = Responses()
+
+    client = Client()
+    suggest_transaction_category(
+        "Microsoft subscription", "Microsoft", -20,
+        client=client, transaction_type=" expense "
+    )
+    system_prompt = client.responses.input[0]["content"]
+    prompt = client.responses.input[1]["content"]
+
+    assert "Transaction type: EXPENSE" in prompt
+    assert "amount" in prompt.lower()
+    assert "supporting evidence only" in prompt
+    assert "category" in system_prompt.lower()
+    assert "confidence" in system_prompt.lower()
+
+
+def test_phase6_3_write_path_selects_and_passes_transaction_type(monkeypatch):
+    import accounting_rag
+    import analytics
+    import llm_categorizer
+    from accounting_rag import AccountingContext
+
+    captured = {"calls": []}
+
+    class Cursor:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def execute(self, sql, binds=None):
+            captured["calls"].append((sql, binds))
+        def fetchone(self):
+            return ("Microsoft subscription", "Microsoft", -20, "EXPENSE")
+
+    class Connection:
+        def cursor(self): return Cursor()
+        def commit(self): captured["committed"] = True
+        def close(self): captured["closed"] = True
+
+    monkeypatch.setattr(analytics, "get_connection", lambda: Connection())
+    monkeypatch.setattr(
+        accounting_rag,
+        "get_accounting_context",
+        lambda description, vendor: AccountingContext(
+            categories=[{
+                "account_id": 1,
+                "account_code": "6100",
+                "account_name": "Software",
+                "account_type": "EXPENSE",
+            }],
+            examples=[],
+        ),
+    )
+
+    def fake_suggest(**kwargs):
+        captured["type"] = kwargs["transaction_type"]
+        return CategorySuggestion("Software", 0.9)
+
+    monkeypatch.setattr(llm_categorizer, "suggest_transaction_category", fake_suggest)
+    result = analytics.categorize_transaction_with_llm(7)
+
+    select_sql = " ".join(captured["calls"][0][0].split()).upper()
+    update_sql = " ".join(captured["calls"][1][0].split()).upper()
+    assert "SELECT DESCRIPTION, VENDOR, AMOUNT, TRANSACTION_TYPE FROM FINANCIAL_TRANSACTIONS" in select_sql
+    assert "SET AI_SUGGESTED_CATEGORY = :CATEGORY, AI_CONFIDENCE = :CONFIDENCE" in update_sql
+    assert "ACCOUNTING_CATEGORY_ID" not in update_sql
+    assert "SET CATEGORY =" not in update_sql
+    assert captured["calls"][1][1] == {
+        "category": "Software",
+        "confidence": 0.9,
+        "transaction_id": 7,
+    }
+    assert result.category == "Software"
+    assert captured["type"] == "EXPENSE"
+    assert captured["committed"] is True
+
+
+def test_phase6_3_investigation_passes_type_and_stays_read_only(monkeypatch):
+    import accounting_rag
+    import analytics
+    import llm_categorizer
+    from accounting_rag import AccountingContext
+
+    captured = {"sql": [], "types": []}
+
+    class Cursor:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def execute(self, sql, binds=None): captured["sql"].append(sql)
+        def fetchone(self):
+            return (7, "2026-09-01", "SALE", "Customer order payment", 100.0, None, "Customer", None, None, "UNMATCHED", "POSTED")
+
+    class Connection:
+        def cursor(self): return Cursor()
+        def commit(self): captured["commit"] = True
+        def close(self): captured["closed"] = True
+
+    context = AccountingContext(
+        categories=[{
+            "account_id": 1,
+            "account_code": "4000",
+            "account_name": "Sales Revenue",
+            "account_type": "REVENUE",
+        }],
+        examples=[],
+    )
+    monkeypatch.setattr(analytics, "get_connection", lambda: Connection())
+    monkeypatch.setattr(accounting_rag, "get_accounting_context", lambda description, vendor: context)
+
+    def fake_suggest(**kwargs):
+        captured["types"].append(kwargs["transaction_type"])
+        return CategorySuggestion("Sales Revenue", 0.95)
+
+    monkeypatch.setattr(llm_categorizer, "suggest_transaction_category", fake_suggest)
+    result = analytics.investigate_uncategorized_transaction(7)
+
+    assert captured["types"] == ["SALE"]
+    assert result["transaction"]["transaction_type"] == "SALE"
+    assert all("UPDATE" not in sql.upper() for sql in captured["sql"])
+    assert "commit" not in captured
+    assert captured["closed"] is True
+
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "python"))
 

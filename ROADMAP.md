@@ -1109,21 +1109,60 @@ Status: complete.
 
 ## Milestone 6.3 — Transaction-Type-Aware Categorization
 
-Next candidate milestone.
+Status: complete.
 
-Evaluate whether `SALE`, `EXPENSE`, and `BANK_FEE` should become explicit
-categorization inputs.
+Implemented:
 
-Focus on:
+* `transaction_type` is an optional final categorizer input.
+* Supported values are `SALE`, `EXPENSE`, and `BANK_FEE`; values are normalized and validated before Demo, client, or OpenAI branching.
+* Invalid non-null transaction types are rejected, while `transaction_type=None` preserves Phase 6.2 behavior.
+* Explicit `SALE` recommends Sales Revenue; explicit `BANK_FEE` recommends Bank Fees; `EXPENSE` preserves the deterministic lexical rules.
+* Competing lexical evidence lowers SALE/BANK_FEE confidence to `DEMO_AMBIGUOUS_CONFIDENCE`.
+* Amount sign is supporting evidence only and does not determine transaction type or category.
+* Transaction type is included in prompt metadata and forwarded by both the categorization write path and the read-only uncategorized-investigation path.
+* Chart of Accounts validation and AI confidence validation remain active.
+* Trusted RAG retrieval behavior and retrieval-score/AI-confidence separation remain unchanged.
+* AI suggestions remain advisory; final accounting categorization remains human-controlled.
+* Demo Mode remains the default and no paid OpenAI API usage is required.
 
-* sale-like transactions currently falling through to expense categories
-* positive/negative amount behavior
-* bank-fee refunds and other sign conflicts
-* transaction-type/category compatibility
-* preserving deterministic Demo Mode behavior
+Validation:
 
-Do not infer transaction type from amount alone when an explicit transaction
-type is available.
+```text
+targeted:
+12 passed
+
+full regression:
+181 passed
+0 failed
+0 errors
+```
+
+### Definition of Done
+
+* [x] transaction type is normalized and validated at the shared categorizer boundary
+* [x] Demo, client, and OpenAI paths share the input and prompt contract
+* [x] explicit SALE/BANK_FEE behavior and EXPENSE lexical behavior are covered
+* [x] amount sign remains supporting evidence only
+* [x] write and read-only investigation paths forward transaction type
+* [x] Chart of Accounts, confidence, RAG-trust, and human-approval boundaries remain preserved
+* [x] no paid API requirement introduced
+* [x] targeted tests and the full backend regression pass
+
+---
+
+## Milestone 6.4 — Categorization Metrics & Evaluation
+
+Next candidate milestone. Begin with inspection and evaluation only; do not implement metrics until the existing evidence and safety boundaries are understood.
+
+Inspect:
+
+* a deterministic categorization evaluation matrix
+* category-level accuracy and coverage
+* high-confidence versus low-confidence behavior
+* ambiguity/conflict frequency and resulting human-review burden
+* whether approved/final history can support offline evaluation
+* deterministic, read-only Demo Mode measurement without paid OpenAI calls
+* preservation of human approval and trusted-history boundaries
 
 ---
 
@@ -1902,43 +1941,32 @@ full regression:
 
 # CURRENT NEXT ACTION
 
-Continue Phase 6 — AI Categorization Quality.
+Phase 6 — AI Categorization Quality is complete through Milestone 6.3.
 
 Completed:
 
 ```text
 6.1 Unified Categorization Validation and Confidence Contract
 6.2 Deterministic Demo Rule Coverage and Ambiguity Calibration
+6.3 Transaction-Type-Aware Categorization
+```
+
+Verification:
+
+```text
+targeted:
+12 passed
+
+full regression:
+181 passed
+0 failed
+0 errors
 ```
 
 Next candidate milestone:
 
 ```text
-6.3 Transaction-Type-Aware Categorization
+6.4 Categorization Metrics & Evaluation
 ```
 
-Before implementing 6.3, inspect the smallest safe contract change needed to
-make `transaction_type` available to categorization.
-
-Evaluate:
-
-* `SALE`
-* `EXPENSE`
-* `BANK_FEE`
-* positive and negative amount combinations
-* sale-like descriptions
-* bank-fee refunds
-* category/account-type compatibility
-* all callers of `suggest_transaction_category`
-* OpenAI prompt compatibility
-* read-only investigation compatibility
-
-Preserve:
-
-* confidence validation from 6.1
-* ambiguity calibration from 6.2
-* deterministic Demo Mode
-* trusted final-category RAG history
-* retrieval-score / AI-confidence separation
-* human approval for final categorization
-* no required paid OpenAI usage
+Start with inspection/evaluation, not implementation. Determine how deterministic, read-only evaluation can measure category-level accuracy and coverage, confidence calibration, ambiguity frequency, and human-review burden while preserving approved-history and human-approval boundaries.

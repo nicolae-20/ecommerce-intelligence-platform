@@ -1124,6 +1124,7 @@ def investigate_uncategorized_transaction(
         amount=float(row[4]),
         client=client,
         context=context,
+        transaction_type=row[2],
     )
 
     # Validate even in deterministic Demo Mode. The existing categorizer
@@ -1874,7 +1875,8 @@ def categorize_transaction_with_llm(transaction_id, client=None):
                 SELECT
                     description,
                     vendor,
-                    amount
+                    amount,
+                    transaction_type
                 FROM financial_transactions
                 WHERE transaction_id = :transaction_id
             """, {"transaction_id": transaction_id})
@@ -1884,7 +1886,7 @@ def categorize_transaction_with_llm(transaction_id, client=None):
             if row is None:
                 return False
 
-            description, vendor, amount = row
+            description, vendor, amount, transaction_type = row
 
             context = get_accounting_context(
     description=description,
@@ -1897,6 +1899,7 @@ def categorize_transaction_with_llm(transaction_id, client=None):
     amount=float(amount),
     client=client,
     context=context,
+    transaction_type=transaction_type,
 )
 
             cursor.execute("""

@@ -191,9 +191,9 @@ At milestone completion, run:
 pytest tests
 ```
 
-The current verified baseline is 92 passing tests. Future milestones may
-increase this count. Success means zero failures and zero errors, not preserving
-the number 92 forever.
+The current verified baseline is recorded in `PROJECT_STATUS.md` and
+`ROADMAP.md`. Future milestones may increase this count. Success means zero
+failures and zero errors, not preserving a historical test count.
 
 ### 6.2 Frontend milestone
 
@@ -222,6 +222,15 @@ Require:
 * mocked OpenAI behavior passes
 * no real paid OpenAI API call is required
 * all tool execution remains allow-listed through `_execute_tool()`
+
+For bounded read-only multi-tool composition, also require:
+
+* a fixed allow-list and fixed execution plan
+* every source execution through `_execute_tool()`
+* no recursive Assistant or prior-phase runner orchestration
+* no model-selected expansion of tool count
+* explicit per-source provenance and detail level
+* bounded drill-down count with no queue-wide drill-down loop
 
 ### 6.5 Database milestone
 

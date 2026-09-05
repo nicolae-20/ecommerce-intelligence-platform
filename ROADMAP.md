@@ -27,7 +27,7 @@ Current verified test baseline:
 
 ```text
 full backend regression: passed
-pytest collection: 261 tests collected
+pytest collection: 293 tests collected
 ```
 
 Current automated regression command:
@@ -41,7 +41,8 @@ Credential-history remediation is complete and fresh-clone validated.
 Current next area:
 
 ```text
-Cross-Issue Investigation Composition / Read-Only Investigation Synthesis
+Phase 7 is complete through Phase 7.4. Next milestone: to be selected after
+the Phase 7.4 closure review.
 ```
 
 ---
@@ -1509,7 +1510,7 @@ Validation:
 * focused Phase 7.3 tests: passed
 * relevant existing analytics/reconciliation/Assistant subset: passed
 * full backend regression: passed
-* pytest collection: 261 tests collected
+* pytest collection at the Phase 7.3 checkpoint: 261 tests collected
 * `git diff --check`: passed
 
 ### Definition of Done
@@ -1522,6 +1523,96 @@ Validation:
 * [x] possible matches remain human-reviewable
 * [x] Demo Mode works without paid OpenAI calls
 * [x] focused, existing regression, and full backend tests pass
+
+---
+
+## Milestone 7.4 — Cross-Issue Investigation Composition / Read-Only Investigation Synthesis
+
+**Status: COMPLETE / VERIFIED**
+
+Phase 7.4 adds an explicit cross-issue investigation mode for deterministic
+Demo execution. It reuses the Phase 7.1 four-tool overview and performs at most
+one categorization drill-down and at most one reconciliation drill-down.
+Composition is deterministic, retains raw evidence and explicit source
+provenance, and remains human-review-aware. It has no autonomous loop,
+model-selected plan, write action, or paid/OpenAI dependency in Demo execution.
+
+The exact allow-list is:
+
+* `get_bookkeeping_summary`
+* `get_ai_review_queue`
+* `get_reconciliation_review`
+* `get_financial_anomalies`
+* `investigate_uncategorized_transaction`
+* `investigate_reconciliation_issue`
+
+Every source execution goes through `_execute_tool()`. The fixed execution
+bound is a minimum of 4 and a maximum of 6 `_execute_tool()` calls.
+
+The implementation preserves separate categorization, reconciliation, and
+anomaly truth semantics. Final accounting categories, stored AI suggestions,
+new read-only recommendations, trusted finalized history, authoritative stored
+reconciliation state, linked candidates, deterministic comparison evidence,
+stored match metadata, and anomaly signals are not conflated. Stored AI
+confidence, recommendation confidence, RAG `retrieval_score`, reconciliation
+`match_confidence`, and anomaly severity remain distinct. There is no aggregate
+confidence, combined or weighted confidence, accounting correctness score,
+reconciliation probability, or overall risk score. `retrieval_score` remains
+relevance only; `POSSIBLE_MATCH` remains unconfirmed; anomalies remain
+deterministic signals rather than confirmed errors or fraud.
+
+The formatter exposes concise labelled drill-down evidence, including final or
+uncategorized state, stored and recommended categorization values, source
+confidence values, trusted historical evidence, reconciliation state and
+comparisons, candidate IDs, assessment, anomaly severity, and human-review
+requirements. It explicitly states that deterministic review order is not
+financial materiality or risk ranking, no accounting or reconciliation state
+changed, and final decisions remain human-controlled.
+
+Routing is explicit and preserves Phase 7.1 generic overview, Phase 7.2
+single financial transaction investigation, Phase 7.3 single
+bank/reconciliation investigation, and ordinary summary, filter, queue,
+anomaly, show/display, and confirm/reject/write-intent routes. The dedicated
+review found and corrected an overly broad `across bookkeeping` trigger before
+closure.
+
+Verification:
+
+```text
+Phase 7.4 targeted tests: 32 passed
+relevant Phase 7.1–7.3/anomaly regression subset: 219 passed
+full backend regression: 293 collected / 293 passed
+0 failed
+0 errors
+0 skipped
+0 xfailed
+```
+
+The dedicated adversarial review found no BLOCKER or HIGH findings. Two MEDIUM
+findings were fixed: overly broad cross-issue routing and omitted
+stored-versus-recommended drill-down distinctions in the formatter.
+
+Deferred LOW future-hardening risks, neither of which blocks Phase 7.4:
+
+1. Independently timed overview and drill-down reads may represent slightly
+   different database snapshots if state changes between calls.
+2. Queue selection depends on positional tuple contracts from existing queue
+   projections and is fragile against future projection changes.
+
+Neither risk surfaced as a current regression. They are not being redesigned or
+promoted into Phase 7.5 by this closure.
+
+### Definition of Done
+
+* [x] explicit cross-issue routing implemented
+* [x] fixed six-tool allow-list documented and enforced
+* [x] Phase 7.1 four-tool overview reused
+* [x] at most one categorization and one reconciliation drill-down
+* [x] deterministic composition and explicit provenance retained
+* [x] labelled formatter evidence preserves truth and confidence separation
+* [x] Demo Mode remains model-free and read-only
+* [x] Phase 7.1–7.3 and ordinary routing preserved
+* [x] targeted, relevant regression, and full backend tests pass
 
 ---
 
@@ -2276,7 +2367,8 @@ Phase 6 — AI Categorization Quality is complete through Milestone 6.4.
 Phase 7.1 — Read-Only Investigation Contract and Deterministic Overview
 Orchestrator is complete. Phase 7.2 — Categorization Investigation
 Drill-Down is complete. Phase 7.3 — Reconciliation Investigation Drill-Down
-and Evidence Composition is complete.
+and Evidence Composition is complete. Phase 7.4 — Cross-Issue Investigation
+Composition / Read-Only Investigation Synthesis is complete and verified.
 
 Completed:
 
@@ -2299,13 +2391,11 @@ full regression:
 0 errors
 ```
 
-Next candidate milestone:
+Next milestone:
 
 ```text
-Phase 7.4 — Cross-Issue Investigation Composition / Read-Only Investigation Synthesis
+To be selected after the Phase 7.4 closure review.
 ```
 
-Do not implement this candidate as part of Phase 7.3 closure. Any future scope
-should compose categorization and reconciliation findings read-only, preserve
-separate permission boundaries and deterministic provenance, and keep all
-accounting decisions human-controlled without requiring paid OpenAI.
+Phase 7.4 closure verification is recorded above. Do not begin a new milestone
+until the next scope is formally selected.

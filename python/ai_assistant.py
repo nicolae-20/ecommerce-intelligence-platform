@@ -9,6 +9,14 @@ from categorization_investigation import (
     PHASE_7_2_CATEGORIZATION_ALLOWLIST,
     PHASE_7_2_CATEGORIZATION_TOOL_PLAN,
 )
+from cross_issue_investigation import (
+    PHASE_7_4_CROSS_ISSUE_ALLOWLIST,
+    PHASE_7_4_DRILL_DOWN_TOOL_PLAN,
+    PHASE_7_4_OVERVIEW_TOOL_PLAN,
+    compose_cross_issue_investigation,
+    select_categorization_item,
+    select_reconciliation_item,
+)
 from financial_investigation import (
     PHASE_7_1_INVESTIGATION_ALLOWLIST,
     PHASE_7_1_INVESTIGATION_TOOL_PLAN,
@@ -275,6 +283,49 @@ def _select_tools(question: str) -> list[str]:
     transaction_id = _extract_transaction_id(question)
     bank_transaction_id = _extract_bank_transaction_id(question)
 
+    wants_cross_issue_investigation = (
+        "investigate all current financial issues" in question_lower
+        or (
+            "categorization and reconciliation" in question_lower
+            and any(
+                phrase in question_lower
+                for phrase in ("together", "problems", "issues")
+            )
+        )
+        or "unresolved bookkeeping issues" in question_lower
+        or "cross-issue investigation" in question_lower
+        or (
+            "most important bookkeeping issues" in question_lower
+            and "why" in question_lower
+        )
+        or (
+            "across bookkeeping" in question_lower
+            and transaction_id is None
+            and bank_transaction_id is None
+            and (
+                "what should i review" in question_lower
+                or (
+                    "investigate" in question_lower
+                    and any(
+                        phrase in question_lower
+                        for phrase in (
+                            "unresolved",
+                            "issue",
+                            "issues",
+                            "problem",
+                            "problems",
+                        )
+                    )
+                )
+                or (
+                    "summarize" in question_lower
+                    and "categorization" in question_lower
+                    and "reconciliation" in question_lower
+                )
+            )
+        )
+    )
+
     wants_investigation_overview = (
         transaction_id is None
         and bank_transaction_id is None
@@ -489,6 +540,9 @@ def _select_tools(question: str) -> list[str]:
     )
 
     tools: list[str] = []
+
+    if wants_cross_issue_investigation:
+        return ["investigate_cross_issue"]
 
     if wants_investigation_overview:
         return ["investigate_financial_overview"]
@@ -811,6 +865,24 @@ def _ask_assistant_demo(
             )
             continue
 
+        if tool_name == "investigate_cross_issue":
+            result = _run_phase_7_4_cross_issue_investigation()
+
+            results.append(
+                {
+                    "tool_name": tool_name,
+                    "result": result,
+                }
+            )
+
+            messages.append(
+                _format_tool_result(
+                    tool_name,
+                    result,
+                )
+            )
+            continue
+
         arguments = _get_demo_tool_arguments(
             tool_name,
             question,
@@ -919,6 +991,72 @@ def _run_phase_7_3_reconciliation_investigation(
             "bank_transaction_id": bank_transaction_id,
         },
     )
+
+
+def _run_phase_7_4_cross_issue_investigation() -> dict[str, Any]:
+    """Execute the fixed, bounded Phase 7.4 plan through the executor."""
+    for tool_name in PHASE_7_4_OVERVIEW_TOOL_PLAN:
+        if tool_name not in PHASE_7_4_CROSS_ISSUE_ALLOWLIST:
+            raise ValueError(
+                "Tool is not allowed for the Phase 7.4 overview: "
+                f"{tool_name}"
+            )
+
+    for tool_name in PHASE_7_4_DRILL_DOWN_TOOL_PLAN:
+        if tool_name not in PHASE_7_4_CROSS_ISSUE_ALLOWLIST:
+            raise ValueError(
+                "Tool is not allowed for the Phase 7.4 drill-down: "
+                f"{tool_name}"
+            )
+
+    if len(PHASE_7_4_OVERVIEW_TOOL_PLAN) != 4:
+        raise ValueError(
+            "Phase 7.4 overview plan must contain exactly four tools"
+        )
+    if len(PHASE_7_4_DRILL_DOWN_TOOL_PLAN) != 2:
+        raise ValueError(
+            "Phase 7.4 drill-down plan must contain exactly two tools"
+        )
+
+    executed_results = []
+    for tool_name in PHASE_7_4_OVERVIEW_TOOL_PLAN:
+        executed_results.append((tool_name, _execute_tool(tool_name)))
+
+    overview_evidence = {
+        tool_name: result
+        for tool_name, result in executed_results
+    }
+
+    categorization_item = select_categorization_item(
+        overview_evidence.get("get_ai_review_queue")
+    )
+    if categorization_item is not None:
+        executed_results.append((
+            PHASE_7_4_DRILL_DOWN_TOOL_PLAN[0],
+            _execute_tool(
+                PHASE_7_4_DRILL_DOWN_TOOL_PLAN[0],
+                {
+                    "transaction_id": int(categorization_item[0]),
+                    "demo_only": True,
+                },
+            ),
+        ))
+
+    reconciliation_item = select_reconciliation_item(
+        overview_evidence.get("get_reconciliation_review")
+    )
+    if reconciliation_item is not None:
+        executed_results.append((
+            PHASE_7_4_DRILL_DOWN_TOOL_PLAN[1],
+            _execute_tool(
+                PHASE_7_4_DRILL_DOWN_TOOL_PLAN[1],
+                {
+                    "bank_transaction_id": int(reconciliation_item[0]),
+                },
+            ),
+        ))
+
+    return compose_cross_issue_investigation(executed_results)
 
 def _format_bookkeeping_summary(result: Any) -> str:
     if not result:
@@ -1415,7 +1553,283 @@ def _format_tool_result(
     if tool_name == "investigate_financial_overview":
         return _format_financial_investigation_overview(result)
 
+    if tool_name == "investigate_cross_issue":
+        return _format_cross_issue_investigation(result)
+
     return f"Executed tool: {tool_name}"
+
+
+def _format_cross_issue_investigation(result: Any) -> str:
+    if not result:
+        return "No cross-issue investigation result is available."
+
+    lines = [
+        result.get(
+            "summary",
+            "Cross-issue investigation summary.",
+        ),
+    ]
+
+    previous_issue_type = None
+    section_labels = {
+        "categorization": "Categorization findings:",
+        "reconciliation": "Reconciliation findings:",
+        "anomaly": "Anomaly signals:",
+    }
+    for finding in result.get("findings", []):
+        issue_type = finding.get("issue_type", "issue")
+        if issue_type != previous_issue_type:
+            lines.append(section_labels.get(issue_type, "Other findings:"))
+            previous_issue_type = issue_type
+
+        subject = finding.get("subject_id")
+        subject_ids = finding.get("subject_ids")
+        if subject is None and subject_ids:
+            subject = ", ".join(str(item) for item in subject_ids)
+        subject_text = f" (subject(s): {subject})" if subject else ""
+        lines.append(
+            f"- [{finding.get('issue_type', 'issue')}] "
+            f"{finding.get('summary', 'No finding details.')} "
+            f"Source: {finding.get('source_tool', 'unknown')}; "
+            f"detail: {finding.get('detail_level', 'overview')}."
+            f"{subject_text}"
+        )
+
+        if finding.get("detail_level") != "drill_down":
+            if issue_type == "anomaly":
+                lines.extend(_format_cross_issue_anomaly_detail(finding))
+            continue
+
+        if issue_type == "categorization":
+            lines.extend(
+                _format_cross_issue_categorization_detail(finding)
+            )
+        elif issue_type == "reconciliation":
+            lines.extend(
+                _format_cross_issue_reconciliation_detail(finding)
+            )
+
+    lines.append(
+        result.get(
+            "suggested_next_human_action",
+            "Review the evidence before taking accounting action.",
+        )
+    )
+    lines.append(
+        "Findings are shown in deterministic review order, not as a "
+        "financial materiality or risk ranking."
+    )
+    lines.append(
+        "Categorization suggestions and reconciliation evidence remain "
+        "read-only; they are not final accounting assignments or matches."
+    )
+    lines.append(
+        "No accounting or reconciliation state was changed. "
+        "Final decisions remain human-controlled."
+    )
+    return "\n".join(lines)
+
+
+def _format_cross_issue_categorization_detail(
+    finding: dict[str, Any],
+) -> list[str]:
+    detail = finding.get("evidence") or {}
+    transaction = detail.get("transaction") or {}
+    evidence = detail.get("evidence") or {}
+    lines = []
+
+    final_category = transaction.get("category")
+    if final_category is None:
+        lines.append(
+            "  Final accounting category: not assigned; "
+            "the transaction remains uncategorized."
+        )
+    else:
+        lines.append(
+            f"  Final accounting category: {final_category} "
+            "(stored final category)."
+        )
+
+    stored_suggestion = detail.get("current_ai_suggestion")
+    if stored_suggestion:
+        stored_category = stored_suggestion.get("category") or "None"
+        stored_confidence = stored_suggestion.get("confidence")
+        confidence_text = (
+            f"{float(stored_confidence) * 100:.0f}%"
+            if stored_confidence is not None
+            else "not available"
+        )
+        lines.append(
+            f"  Stored AI suggestion: {stored_category}; "
+            f"Stored AI confidence: {confidence_text}. "
+            "This stored suggestion is not approved accounting truth."
+        )
+    else:
+        lines.append("  Stored AI suggestion: none.")
+
+    recommendation = detail.get("recommendation")
+    if recommendation:
+        recommendation_category = recommendation.get("category") or "None"
+        recommendation_confidence = recommendation.get("confidence")
+        confidence_text = (
+            f"{float(recommendation_confidence) * 100:.0f}%"
+            if recommendation_confidence is not None
+            else "not available"
+        )
+        lines.append(
+            f"  New read-only recommendation: {recommendation_category}; "
+            f"Recommendation confidence: {confidence_text}. "
+            "It is not persisted or final."
+        )
+    else:
+        lines.append("  New read-only recommendation: none was generated.")
+
+    supporting_count = evidence.get("supporting_example_count")
+    if supporting_count is not None:
+        lines.append(
+            "  Supporting trusted historical evidence: "
+            f"{supporting_count} confirmed historical example(s)."
+        )
+
+    if evidence.get("retrieved_category_conflict"):
+        lines.append(
+            "  Trusted historical evidence is mixed across categories; "
+            "human judgment is required."
+        )
+
+    lines.append(
+        "  Human review is required before any final categorization decision."
+        if detail.get("requires_human_review", True)
+        else "  No new categorization review is currently required."
+    )
+    return lines
+
+
+def _format_cross_issue_reconciliation_detail(
+    finding: dict[str, Any],
+) -> list[str]:
+    detail = finding.get("evidence") or {}
+    bank_transaction = detail.get("bank_transaction") or {}
+    match = detail.get("match") or {}
+    evidence = detail.get("evidence") or {}
+    assessment = detail.get("assessment") or {}
+    lines = [
+        "  Authoritative stored reconciliation state: "
+        f"{bank_transaction.get('status') or 'UNKNOWN'}.",
+        "  Stored match type: "
+        f"{match.get('match_type') or 'None'}.",
+    ]
+
+    match_confidence = match.get("match_confidence")
+    if match_confidence is None:
+        lines.append(
+            "  Stored reconciliation match confidence: not available "
+            "(stored metadata)."
+        )
+    else:
+        lines.append(
+            "  Stored reconciliation match confidence: "
+            f"{float(match_confidence) * 100:.0f}% "
+            "(stored metadata, not a probability)."
+        )
+
+    candidate = detail.get("candidate_match")
+    if candidate is None:
+        lines.append(
+            "  Linked candidate financial transaction ID: none stored."
+        )
+    else:
+        lines.append(
+            "  Linked candidate financial transaction ID: "
+            f"{candidate.get('transaction_id')}."
+        )
+
+    amount_difference = evidence.get("amount_difference")
+    amount_matches = evidence.get("amount_matches")
+    amount_text = (
+        "exact match"
+        if amount_matches is True
+        else "not an exact match"
+        if amount_matches is False
+        else "unavailable"
+    )
+    if amount_difference is not None:
+        amount_text += f"; difference {float(amount_difference):.2f}"
+    lines.append(f"  Amount comparison: {amount_text}.")
+
+    date_difference = evidence.get("date_difference_days")
+    lines.append(
+        "  Date comparison: "
+        + (
+            f"{date_difference} day(s) apart."
+            if date_difference is not None
+            else "unavailable."
+        )
+    )
+
+    overlap = evidence.get("description_token_overlap")
+    if overlap is not None:
+        lines.append(
+            "  Description-token overlap: "
+            f"{float(overlap) * 100:.0f}%."
+        )
+
+    if assessment.get("explanation"):
+        lines.append(f"  Assessment: {assessment['explanation']}")
+
+    match_type = match.get("match_type")
+    stored_status = bank_transaction.get("status")
+    if stored_status == "MATCHED":
+        lines.append(
+            "  MATCHED remains the authoritative stored state; no new "
+            "confirmation is required."
+        )
+    elif match_type == "POSSIBLE_MATCH":
+        lines.append(
+            "  POSSIBLE_MATCH remains unconfirmed; strong comparison "
+            "evidence does not automatically confirm reconciliation."
+        )
+    elif match_type == "NO_MATCH" or stored_status == "UNMATCHED":
+        lines.append(
+            "  NO_MATCH/unmatched remains unresolved pending human review."
+        )
+
+    lines.append(
+        "  Human review is required before any final reconciliation decision."
+        if detail.get("requires_human_review", True)
+        else "  No new unresolved-match review is currently required."
+    )
+    return lines
+
+
+def _format_cross_issue_anomaly_detail(
+    finding: dict[str, Any],
+) -> list[str]:
+    anomaly = finding.get("evidence") or {}
+    anomaly_type = (
+        anomaly.get("anomaly_type")
+        or finding.get("status")
+        or "UNKNOWN"
+    )
+    severity = anomaly.get("severity") or "not specified"
+    transaction_ids = (
+        anomaly.get("transaction_ids")
+        or finding.get("subject_ids")
+        or []
+    )
+    subject_text = ", ".join(str(item) for item in transaction_ids) or "none"
+    reason = (
+        anomaly.get("reason")
+        or finding.get("summary")
+        or "No reason provided."
+    )
+    return [
+        f"  Deterministic anomaly signal: {anomaly_type}; "
+        f"source severity: {severity}; transaction(s): {subject_text}.",
+        f"  Signal reason: {reason}",
+        "  This is an investigation signal, not a confirmed accounting "
+        "error; human review is required before taking action.",
+    ]
 
 def _format_transactions_by_date(result: Any) -> str:
     if not result:

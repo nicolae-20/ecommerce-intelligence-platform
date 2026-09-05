@@ -10,7 +10,9 @@ Snapshot baseline:
 
 ```text
 full backend regression: passed
-pytest collection: 261 tests collected
+pytest collection: 293 tests collected
+Phase 7.4 targeted tests: 32 passed
+Phase 7.1–7.3/anomaly regression subset: 219 passed
 ```
 
 This test count is a checkpoint, not a permanent target.
@@ -858,7 +860,7 @@ Current known baseline:
 
 ```text
 full backend regression: passed
-pytest collection: 261 tests collected
+pytest collection: 293 tests collected
 ```
 
 Current automated regression command:
@@ -1029,7 +1031,9 @@ Similarity retrieval, policy documents, and source-aware answers remain future w
 
 ## Agentic workflows
 
-Read-only investigation agents are not yet considered complete.
+Read-only investigation agents are complete through Phase 7.4. Future
+agentic work, including approval-gated write-capable workflows, remains
+incomplete.
 
 ## MCP
 
@@ -1076,10 +1080,9 @@ Targeted Milestone 6.4 validation:
 19 passed
 ```
 
-# 30. Immediate Next Candidate
+# 30. Phase 7 Investigation Status
 
-Phase 6 is complete. Phase 7 remains in progress. Milestones 7.1, 7.2, and
-7.3 are complete.
+Phase 6 is complete. Phase 7.1, 7.2, 7.3, and 7.4 are complete and verified.
 
 The deterministic Demo Mode overview uses an explicit four-tool allow-list:
 bookkeeping summary, AI categorization review queue, reconciliation review
@@ -1095,7 +1098,7 @@ focused Phase 7.1 tests: passed
 focused Phase 7.2 tests: passed
 existing analytics/Assistant/RAG subset: passed
 full backend regression: passed
-pytest collection: 261 tests collected
+pytest collection: 293 tests collected
 git diff --check: passed
 ```
 
@@ -1184,7 +1187,7 @@ queue, overview, categorization, anomaly, and bookkeeping routes remain
 separate. Demo Mode is deterministic and model-free; no paid OpenAI call is
 required, and final reconciliation decisions remain human-controlled.
 
-Current Phase 7.3 verification:
+Historical Phase 7.3 verification checkpoint:
 
 ```text
 focused Phase 7.3 tests: passed
@@ -1194,10 +1197,87 @@ pytest collection: 261 tests collected
 git diff --check: passed
 ```
 
-Next candidate milestone:
+## Phase 7.4 — Cross-Issue Investigation Composition / Read-Only Investigation Synthesis
 
-Phase 7.4 — Cross-Issue Investigation Composition / Read-Only Investigation
-Synthesis.
+Status: COMPLETE / VERIFIED
+
+Phase 7.4 adds an explicit, deterministic Demo cross-issue investigation mode.
+It reuses the fixed Phase 7.1 four-tool overview, then performs at most one
+categorization drill-down and at most one reconciliation drill-down. Results
+are composed without an autonomous loop or model-selected plan; raw evidence,
+source provenance, detail level, and human-review requirements are retained.
+All execution goes through `_execute_tool()`, with no write actions and no paid
+OpenAI dependency in Demo execution.
+
+The exact Phase 7.4 allow-list is:
+
+* `get_bookkeeping_summary`
+* `get_ai_review_queue`
+* `get_reconciliation_review`
+* `get_financial_anomalies`
+* `investigate_uncategorized_transaction`
+* `investigate_reconciliation_issue`
+
+The execution bound is a minimum of 4 and a maximum of 6 `_execute_tool()`
+calls. Categorization and reconciliation IDs remain separately named and
+deterministically selected.
+
+Categorization preserves the distinction between the final accounting
+category, stored AI suggestion, new read-only recommendation, and trusted
+finalized historical evidence. Reconciliation preserves authoritative stored
+state, linked candidate transaction facts, deterministic comparison evidence,
+and stored match metadata. Stored AI confidence, recommendation confidence,
+RAG `retrieval_score`, reconciliation `match_confidence`, and anomaly severity
+remain distinct. `retrieval_score` is relevance only; no aggregate confidence,
+risk, correctness score, weighted confidence, or reconciliation probability is
+created.
+
+`POSSIBLE_MATCH` remains unconfirmed, `NO_MATCH`/unmatched remains unresolved,
+and anomalies remain deterministic investigation signals rather than confirmed
+errors or fraud. Final accounting and reconciliation decisions remain
+human-controlled.
+
+The formatter exposes concise labelled categorization, reconciliation, and
+anomaly evidence, including source-specific confidence values, stored versus
+recommended values, deterministic comparisons, source severity, and review
+requirements. It states that deterministic review order is not financial
+materiality or risk ranking, no accounting or reconciliation state changed,
+and final decisions remain human-controlled.
+
+Phase 7.4 routing is explicit and preserves the Phase 7.1 overview, Phase 7.2
+single financial transaction investigation, Phase 7.3 single bank/reconciliation
+investigation, and ordinary summary, filter, queue, anomaly, show/display, and
+confirm/reject/write-intent routes. The dedicated review found and corrected an
+overly broad `across bookkeeping` trigger before closure.
+
+Verified closure:
+
+```text
+Phase 7.4 targeted tests: 32 passed
+relevant Phase 7.1–7.3/anomaly regression subset: 219 passed
+full backend regression: 293 collected / 293 passed
+0 failed
+0 errors
+0 skipped
+0 xfailed
+```
+
+The dedicated adversarial review found no BLOCKER or HIGH findings. Two
+MEDIUM findings were fixed: overly broad cross-issue routing and omitted
+stored-versus-recommended drill-down distinctions in the formatter.
+
+Deferred LOW future-hardening notes, neither of which blocks closure:
+
+1. Independently timed overview and drill-down reads may represent slightly
+   different database snapshots if state changes between calls.
+2. Queue selection depends on positional tuple contracts from existing queue
+   projections and is fragile against future projection changes.
+
+Neither risk surfaced as a current regression, and neither is being promoted
+into a new milestone.
+
+Current verified checkpoint: Phase 7.4 is complete. The next milestone is to be
+selected after the Phase 7.4 closure review.
 
 # 31. Next Milestone Evaluation Criteria
 

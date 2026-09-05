@@ -1,2 +1,6 @@
-oracledb
-python-dotenv
+oracledb==4.0.2
+python-dotenv==1.2.3
+fastapi==0.141.1
+pydantic==2.13.5
+uvicorn==0.52.4
+openai==3.6.0

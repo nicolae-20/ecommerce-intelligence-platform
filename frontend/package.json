@@ -9,6 +9,10 @@
     "lint": "oxlint",
     "preview": "vite preview"
   },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0",
+    "npm": ">=10"
+  },
   "dependencies": {
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

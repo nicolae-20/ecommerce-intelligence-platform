@@ -41,9 +41,29 @@ Credential-history remediation is complete and fresh-clone validated.
 Current next area:
 
 ```text
-Phase 7 is complete through Phase 7.4. Next milestone: to be selected after
-the Phase 7.4 closure review.
+Portfolio Milestone 2 — Accounting State and AI Boundary Reliability
 ```
+
+## Portfolio milestone closure
+
+### Portfolio Milestone 1 — Runtime & Oracle Foundations
+
+Status: COMPLETE.
+
+* [x] 1A — Runtime & Environment Reproducibility
+* [x] 1B — Oracle Accounting Bootstrap
+
+Milestone 1B is closed with a reproducible fresh-schema Oracle bootstrap,
+documented prerequisite privilege/quota contract, deterministic synthetic
+fixtures, captured reconciliation behavior, isolated runtime verification,
+and cleanup of all disposable verification schemas.
+
+### Portfolio Milestone 2 — Accounting State and AI Boundary Reliability
+
+Status: NEXT / NOT STARTED.
+
+This remains the next portfolio milestone. No Milestone 2 implementation is
+included in the current closure.
 
 ---
 

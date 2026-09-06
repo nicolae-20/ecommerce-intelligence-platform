@@ -19,6 +19,32 @@ This test count is a checkpoint, not a permanent target.
 
 Future milestones are expected to add tests.
 
+## Portfolio Milestone 1 — Runtime & Oracle Foundations
+
+Status: COMPLETE.
+
+### Milestone 1A — Runtime & Environment Reproducibility
+
+Complete. Runtime and environment reproducibility was verified before the
+Oracle accounting bootstrap work.
+
+### Milestone 1B — Oracle Accounting Bootstrap
+
+Complete and verified. Tracked artifacts provide a fresh-schema Oracle
+accounting bootstrap with a SQL*Plus/SQLcl installer, explicit
+`SQLBLANKLINES ON` compatibility, Oracle SQL fail-fast behavior, a faithful
+four-table accounting schema, deterministic synthetic seed data, and the
+captured reconciliation procedure. The demonstrated prerequisite contract is
+`CREATE SESSION`, `CREATE TABLE`, `CREATE PROCEDURE`, `CREATE SEQUENCE`, and a
+50 MB quota on `USERS`.
+
+Fresh isolated bootstrap, targeted Oracle integration, and the fresh-bootstrap
+full backend process all completed successfully. Current collection-only
+evidence is 301 tests; the exact historical passed/skipped/xfail counters were
+not retained. Reconciliation repeat behavior was verified, SQL_LEARNING
+remained protected, and all four disposable verification schemas were cleaned
+up.
+
 ---
 
 # 1. Project Summary
@@ -1276,8 +1302,9 @@ Deferred LOW future-hardening notes, neither of which blocks closure:
 Neither risk surfaced as a current regression, and neither is being promoted
 into a new milestone.
 
-Current verified checkpoint: Phase 7.4 is complete. The next milestone is to be
-selected after the Phase 7.4 closure review.
+Current verified checkpoint: Portfolio Milestone 1 is complete. The next
+milestone is Portfolio Milestone 2 — Accounting State and AI Boundary
+Reliability. Milestone 2 is not started and requires formal scope selection.
 
 # 31. Next Milestone Evaluation Criteria
 

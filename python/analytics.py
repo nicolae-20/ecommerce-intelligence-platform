@@ -294,7 +294,7 @@ def get_bookkeeping_summary():
 
                     COUNT(
     CASE
-        WHEN category IS NULL
+        WHEN accounting_category_id IS NULL
              OR reconciliation_status = 'UNMATCHED'
         THEN 1
     END
@@ -358,14 +358,14 @@ def get_financial_statistics(
 
                     SUM(
                         CASE
-                            WHEN category IS NOT NULL THEN 1
+                            WHEN accounting_category_id IS NOT NULL THEN 1
                             ELSE 0
                         END
                     ) AS categorized_count,
 
                     SUM(
                         CASE
-                            WHEN category IS NULL THEN 1
+                            WHEN accounting_category_id IS NULL THEN 1
                             ELSE 0
                         END
                     ) AS uncategorized_count
@@ -990,7 +990,7 @@ def get_transactions_requiring_review():
 END AS ai_review_status
                 FROM financial_transactions
                 WHERE
-    category IS NULL
+    accounting_category_id IS NULL
     OR reconciliation_status = 'UNMATCHED'
                 ORDER BY transaction_date
             """)
@@ -1025,7 +1025,7 @@ def get_ai_categorization_review_queue():
                         ELSE 'NEEDS_REVIEW'
                     END AS ai_review_status
                 FROM financial_transactions
-                WHERE category IS NULL
+                WHERE accounting_category_id IS NULL
                 ORDER BY transaction_date
             """)
 
@@ -1059,13 +1059,17 @@ def investigate_uncategorized_transaction(
                     transaction_type,
                     description,
                     amount,
-                    category,
+                    COALESCE(category, ac.account_name) AS category,
                     vendor,
                     ai_suggested_category,
                     ai_confidence,
                     reconciliation_status,
-                    status
+                    status,
+                    financial_transactions.accounting_category_id
                 FROM financial_transactions
+                LEFT JOIN accounting_categories ac
+                    ON ac.accounting_category_id =
+                       financial_transactions.accounting_category_id
                 WHERE transaction_id = :transaction_id
             """, {
                 "transaction_id": transaction_id,
@@ -1099,7 +1103,7 @@ def investigate_uncategorized_transaction(
         else None
     )
 
-    if row[5] is not None:
+    if row[11] is not None:
         return {
             "transaction": transaction,
             "investigation_status": "ALREADY_CATEGORIZED",
@@ -1241,8 +1245,9 @@ def approve_transaction_category(transaction_id):
                         SELECT ac.accounting_category_id
                         FROM accounting_categories ac
                         WHERE ac.account_name = ft.ai_suggested_category
+                          AND ac.is_active = 'Y'
                     ),
-                    reconciliation_status = 'MATCHED'
+                    category = ft.ai_suggested_category
                 WHERE ft.transaction_id = :transaction_id
                   AND ft.ai_suggested_category IS NOT NULL
                   AND EXISTS (
@@ -1344,7 +1349,12 @@ def assign_transaction_category(transaction_id, category_id):
                 UPDATE financial_transactions ft
                 SET
                     accounting_category_id = :category_id,
-                    reconciliation_status = 'MATCHED'
+                    category = (
+                        SELECT ac.account_name
+                        FROM accounting_categories ac
+                        WHERE ac.accounting_category_id = :category_id
+                          AND ac.is_active = 'Y'
+                    )
                 WHERE ft.transaction_id = :transaction_id
                   AND EXISTS (
                       SELECT 1
@@ -1413,6 +1423,23 @@ def run_reconciliation():
                 BEGIN
                     reconcile_bank_transactions;
                 END;
+            """)
+
+            # The retained Oracle procedure owns bank-side matching. The
+            # application wrapper synchronizes only finalized exact matches to
+            # the linked financial transaction. Direct procedure callers keep
+            # the historical behavior and are intentionally outside M2A.
+            cursor.execute("""
+                UPDATE financial_transactions ft
+                SET reconciliation_status = 'MATCHED'
+                WHERE reconciliation_status = 'UNMATCHED'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM bank_transactions bt
+                      WHERE bt.financial_transaction_id = ft.transaction_id
+                        AND bt.status = 'MATCHED'
+                        AND bt.match_type = 'EXACT_MATCH'
+                  )
             """)
 
             connection.commit()
@@ -1797,6 +1824,15 @@ def confirm_bank_transaction_match(bank_transaction_id):
             financial_transaction_id = row[0]
 
             cursor.execute("""
+                UPDATE financial_transactions
+                SET reconciliation_status = 'MATCHED'
+                WHERE transaction_id = :financial_transaction_id
+                  AND reconciliation_status = 'UNMATCHED'
+            """, {
+                "financial_transaction_id": financial_transaction_id,
+            })
+
+            cursor.execute("""
                 INSERT INTO audit_log (
                     bank_transaction_id,
                     financial_transaction_id,
@@ -1945,7 +1981,7 @@ def categorize_uncategorized_transactions(client=None):
                     transaction_id
                 FROM financial_transactions
                 WHERE
-                    category IS NULL
+                    accounting_category_id IS NULL
                     AND ai_suggested_category IS NULL
                 ORDER BY transaction_id
             """)

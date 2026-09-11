@@ -1059,13 +1059,17 @@ def investigate_uncategorized_transaction(
                     transaction_type,
                     description,
                     amount,
-                    COALESCE(category, ac.account_name) AS category,
+                    CASE
+                        WHEN financial_transactions.accounting_category_id
+                             IS NOT NULL
+                        THEN COALESCE(category, ac.account_name)
+                        ELSE NULL
+                    END AS category,
                     vendor,
                     ai_suggested_category,
                     ai_confidence,
                     reconciliation_status,
-                    status,
-                    financial_transactions.accounting_category_id
+                    status
                 FROM financial_transactions
                 LEFT JOIN accounting_categories ac
                     ON ac.accounting_category_id =
@@ -1103,7 +1107,7 @@ def investigate_uncategorized_transaction(
         else None
     )
 
-    if row[11] is not None:
+    if row[5] is not None:
         return {
             "transaction": transaction,
             "investigation_status": "ALREADY_CATEGORIZED",
@@ -1143,9 +1147,6 @@ def investigate_uncategorized_transaction(
             transaction_type=row[2],
         )
 
-    # Validate even in deterministic Demo Mode. The existing categorizer
-    # validates model responses, but Demo Mode should obey the same trust
-    # boundary for investigation results.
     suggestion = validate_category_suggestion(
         suggestion,
         context,
@@ -1425,10 +1426,6 @@ def run_reconciliation():
                 END;
             """)
 
-            # The retained Oracle procedure owns bank-side matching. The
-            # application wrapper synchronizes only finalized exact matches to
-            # the linked financial transaction. Direct procedure callers keep
-            # the historical behavior and are intentionally outside M2A.
             cursor.execute("""
                 UPDATE financial_transactions ft
                 SET reconciliation_status = 'MATCHED'
@@ -1970,8 +1967,6 @@ def categorize_transaction_with_llm(transaction_id, client=None):
 
 
 def categorize_uncategorized_transactions(client=None):
-    from llm_categorizer import is_high_confidence_suggestion
-
     connection = get_connection()
 
     try:
@@ -2003,10 +1998,10 @@ def categorize_uncategorized_transactions(client=None):
 
         if suggestion:
             results.append({
-        "transaction_id": transaction_id,
-        "category": suggestion.category,
-        "confidence": suggestion.confidence,
-        "high_confidence": suggestion.high_confidence,
-    })
+                "transaction_id": transaction_id,
+                "category": suggestion.category,
+                "confidence": suggestion.confidence,
+                "high_confidence": suggestion.high_confidence,
+            })
 
     return results

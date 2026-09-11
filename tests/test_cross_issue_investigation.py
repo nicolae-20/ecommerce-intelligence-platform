@@ -149,8 +149,13 @@ def test_phase7_4_runner_is_bounded_and_uses_stable_drill_down_args(monkeypatch)
     )
     calls = []
 
-    def fake_execute_tool(tool_name, arguments=None):
-        calls.append((tool_name, arguments))
+    def fake_execute_tool(
+        tool_name,
+        arguments=None,
+        *,
+        internal_arguments=None,
+    ):
+        calls.append((tool_name, arguments, internal_arguments))
         if tool_name in overview:
             return overview[tool_name]
         if tool_name == "investigate_uncategorized_transaction":
@@ -171,20 +176,22 @@ def test_phase7_4_runner_is_bounded_and_uses_stable_drill_down_args(monkeypatch)
     monkeypatch.setattr(ai_assistant, "_execute_tool", fake_execute_tool)
     result = ai_assistant._run_phase_7_4_cross_issue_investigation()
 
-    assert [name for name, _ in calls] == [
+    assert [name for name, _, _ in calls] == [
         *OVERVIEW_TOOLS,
         *DRILL_DOWN_TOOLS,
     ]
     assert calls[4] == (
         "investigate_uncategorized_transaction",
-        {"transaction_id": 11, "demo_only": True},
+        {"transaction_id": 11},
+        {"demo_only": True},
     )
     assert calls[5] == (
         "investigate_reconciliation_issue",
         {"bank_transaction_id": 9},
+        None,
     )
     assert len(calls) <= 6
-    assert result["source_tools"] == [name for name, _ in calls]
+    assert result["source_tools"] == [name for name, _, _ in calls]
 
 
 def test_phase7_4_empty_queues_make_only_four_overview_calls(monkeypatch):
@@ -390,8 +397,13 @@ def test_phase7_4_demo_route_is_model_free_and_uses_executor(monkeypatch):
         lambda *args, **kwargs: pytest.fail("Demo route called OpenAI"),
     )
 
-    def fake_execute_tool(tool_name, arguments=None):
-        calls.append((tool_name, arguments))
+    def fake_execute_tool(
+        tool_name,
+        arguments=None,
+        *,
+        internal_arguments=None,
+    ):
+        calls.append((tool_name, arguments, internal_arguments))
         if tool_name in overview:
             return overview[tool_name]
         if tool_name == "investigate_uncategorized_transaction":
@@ -415,8 +427,12 @@ def test_phase7_4_demo_route_is_model_free_and_uses_executor(monkeypatch):
     )
 
     assert response.tool_name == "investigate_cross_issue"
-    assert [name for name, _ in calls] == [*OVERVIEW_TOOLS, *DRILL_DOWN_TOOLS]
-    assert calls[4][1] == {"transaction_id": 11, "demo_only": True}
+    assert [name for name, _, _ in calls] == [*OVERVIEW_TOOLS, *DRILL_DOWN_TOOLS]
+    assert calls[4] == (
+        "investigate_uncategorized_transaction",
+        {"transaction_id": 11},
+        {"demo_only": True},
+    )
     assert "No accounting or reconciliation state was changed" in response.message
 
 

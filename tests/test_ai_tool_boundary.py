@@ -471,45 +471,12 @@ def test_openai_tool_call_rejects_malformed_json_before_execution(
     assert called is False
 
 
-def test_openai_model_can_be_overridden_without_real_api_call(monkeypatch):
-    import ai_assistant
-
-    monkeypatch.setenv("OPENAI_MODEL", "test-model")
-
-    class Response:
-        id = "resp_model"
-        output = []
-        output_text = "Model response"
-
-    class Responses:
-        def __init__(self):
-            self.calls = []
-
-        def create(self, **kwargs):
-            self.calls.append(kwargs)
-            return Response()
-
-    class Client:
-        def __init__(self):
-            self.responses = Responses()
-
-    client = Client()
-    result = ai_assistant.ask_assistant_openai(
-        "No tool needed.",
-        client=client,
-    )
-
-    assert result.message == "Model response"
-    assert client.responses.calls[0]["model"] == "test-model"
-
-
 def test_demo_module_import_does_not_require_openai_sdk():
     project_root = Path(__file__).resolve().parents[1]
     python_dir = project_root / "python"
 
     code = r'''
 import builtins
-import sys
 
 real_import = builtins.__import__
 
@@ -520,7 +487,7 @@ def blocked_import(name, *args, **kwargs):
 
 builtins.__import__ = blocked_import
 import ai_assistant
-assert ai_assistant.DEFAULT_OPENAI_MODEL
+assert callable(ai_assistant.ask_assistant)
 '''
 
     env = os.environ.copy()

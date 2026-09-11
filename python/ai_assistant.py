@@ -1855,6 +1855,13 @@ _INTERNAL_TOOL_ARGUMENTS = {
     },
 }
 
+_INTERNAL_DEFAULT_TOOL_ARGUMENTS = {
+    "get_financial_anomalies": {
+        "start_date": None,
+        "end_date": None,
+    },
+}
+
 
 def _matches_json_type(value: Any, expected_type: str) -> bool:
     if expected_type == "null":
@@ -2025,9 +2032,16 @@ def _execute_tool(
             f"Unknown AI tool requested: {tool_name}"
         )
 
+    effective_arguments = arguments
+    if arguments is None:
+        effective_arguments = _INTERNAL_DEFAULT_TOOL_ARGUMENTS.get(
+            tool_name,
+            {},
+        )
+
     validated_arguments = _validate_tool_arguments(
         tool_name,
-        arguments,
+        effective_arguments,
     )
     validated_internal_arguments = _validate_internal_tool_arguments(
         tool_name,

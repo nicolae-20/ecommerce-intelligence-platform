@@ -57,8 +57,13 @@ def test_phase7_2_runner_uses_executor_once_with_demo_flag(monkeypatch):
 
     calls = []
 
-    def fake_execute_tool(tool_name, arguments=None):
-        calls.append((tool_name, arguments))
+    def fake_execute_tool(
+        tool_name,
+        arguments=None,
+        *,
+        internal_arguments=None,
+    ):
+        calls.append((tool_name, arguments, internal_arguments))
         return {"investigation_status": "RECOMMENDATION_READY"}
 
     monkeypatch.setattr(ai_assistant, "_execute_tool", fake_execute_tool)
@@ -69,10 +74,8 @@ def test_phase7_2_runner_uses_executor_once_with_demo_flag(monkeypatch):
     assert calls == [
         (
             "investigate_uncategorized_transaction",
-            {
-                "transaction_id": 123,
-                "demo_only": True,
-            },
+            {"transaction_id": 123},
+            {"demo_only": True},
         )
     ]
 

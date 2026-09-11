@@ -2,9 +2,12 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
 import calendar
+import json
+import math
+import os
 import re
 
-from ai_tools import TOOL_REGISTRY
+from ai_tools import TOOL_DEFINITIONS, TOOL_REGISTRY
 from categorization_investigation import (
     PHASE_7_2_CATEGORIZATION_ALLOWLIST,
     PHASE_7_2_CATEGORIZATION_TOOL_PLAN,
@@ -60,6 +63,7 @@ MONTH_NAMES = (
     "november",
     "december",
 )
+
 
 @dataclass
 class AssistantResponse:
@@ -651,8 +655,6 @@ def _select_tools(question: str) -> list[str]:
     return list(dict.fromkeys(tools))
 
 
-
-
 def ask_assistant(question: str) -> AssistantResponse:
     mode = os.getenv(
         "AI_ASSISTANT_MODE",
@@ -734,22 +736,21 @@ def _extract_transaction_filters(
     question_lower = question.lower()
 
     filters: dict[str, Any] = {
-    "category": None,
-    "vendor": None,
-    "transaction_type": None,
-    "reconciliation_status": None,
-    "categorization_state": None,
-    "min_ai_confidence": None,
-    "max_ai_confidence": None,
-    "min_amount": None,
-    "max_amount": None,
-    "status": None,
-    "start_date": None,
-    "end_date": None,
+        "category": None,
+        "vendor": None,
+        "transaction_type": None,
+        "reconciliation_status": None,
+        "categorization_state": None,
+        "min_ai_confidence": None,
+        "max_ai_confidence": None,
+        "min_amount": None,
+        "max_amount": None,
+        "status": None,
+        "start_date": None,
+        "end_date": None,
     }
 
     filters["category"] = _extract_known_category(question)
-
     filters["vendor"] = _extract_known_vendor(question)
     filters["transaction_type"] = _extract_transaction_type(question)
     filters["reconciliation_status"] = _extract_reconciliation_status(question)
@@ -765,7 +766,6 @@ def _extract_transaction_filters(
 
     if "pending" in question_lower:
         filters["status"] = "PENDING"
-
     elif "posted" in question_lower:
         filters["status"] = "POSTED"
 
@@ -774,9 +774,6 @@ def _extract_transaction_filters(
     if date_range is not None:
         filters["start_date"] = date_range[0]
         filters["end_date"] = date_range[1]
-    else:
-        filters["start_date"] = None
-        filters["end_date"] = None
 
     return filters
 
@@ -956,14 +953,8 @@ def _run_phase_7_2_categorization_investigation(
 
     return _execute_tool(
         PHASE_7_2_CATEGORIZATION_TOOL_PLAN[0],
-        {
-            "transaction_id": transaction_id,
-            "demo_only": True,
-        },
-    )
-
-    raise ValueError(
-        "Phase 7.2 categorization investigation plan is empty"
+        {"transaction_id": transaction_id},
+        internal_arguments={"demo_only": True},
     )
 
 
@@ -1035,10 +1026,8 @@ def _run_phase_7_4_cross_issue_investigation() -> dict[str, Any]:
             PHASE_7_4_DRILL_DOWN_TOOL_PLAN[0],
             _execute_tool(
                 PHASE_7_4_DRILL_DOWN_TOOL_PLAN[0],
-                {
-                    "transaction_id": int(categorization_item[0]),
-                    "demo_only": True,
-                },
+                {"transaction_id": int(categorization_item[0])},
+                internal_arguments={"demo_only": True},
             ),
         ))
 
@@ -1058,6 +1047,7 @@ def _run_phase_7_4_cross_issue_investigation() -> dict[str, Any]:
 
     return compose_cross_issue_investigation(executed_results)
 
+
 def _format_bookkeeping_summary(result: Any) -> str:
     if not result:
         return "No bookkeeping summary is available."
@@ -1075,6 +1065,7 @@ def _format_bookkeeping_summary(result: Any) -> str:
         f"and {transactions_requiring_review} "
         f"transactions requiring review."
     )
+
 
 def _format_ai_review_queue(result: Any) -> str:
     if not result:
@@ -1406,15 +1397,6 @@ def _format_audit_log(result: Any) -> str:
     return "\n".join(lines)
 
 
-import json
-import os
-from typing import Any
-
-from openai import OpenAI
-
-from ai_tools import TOOL_DEFINITIONS, TOOL_REGISTRY
-
-
 def ask_assistant_openai(
     question: str,
     client: Any | None = None,
@@ -1426,6 +1408,8 @@ def ask_assistant_openai(
             raise RuntimeError(
                 "OPENAI_API_KEY is not configured"
             )
+
+        from openai import OpenAI
 
         client = OpenAI(api_key=api_key)
 
@@ -1831,6 +1815,7 @@ def _format_cross_issue_anomaly_detail(
         "error; human review is required before taking action.",
     ]
 
+
 def _format_transactions_by_date(result: Any) -> str:
     if not result:
         return "No financial transactions were found for that date range."
@@ -1859,19 +1844,203 @@ def _format_transactions_by_date(result: Any) -> str:
     return "\n".join(lines)
 
 
+_TOOL_PARAMETER_SCHEMAS = {
+    definition["name"]: definition["parameters"]
+    for definition in TOOL_DEFINITIONS
+}
+
+_INTERNAL_TOOL_ARGUMENTS = {
+    "investigate_uncategorized_transaction": {
+        "demo_only": bool,
+    },
+}
+
+
+def _matches_json_type(value: Any, expected_type: str) -> bool:
+    if expected_type == "null":
+        return value is None
+    if expected_type == "string":
+        return isinstance(value, str)
+    if expected_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "number":
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(float(value))
+        )
+    if expected_type == "boolean":
+        return isinstance(value, bool)
+    if expected_type == "object":
+        return isinstance(value, dict)
+    if expected_type == "array":
+        return isinstance(value, list)
+    return False
+
+
+def _validate_tool_argument_value(
+    tool_name: str,
+    argument_name: str,
+    value: Any,
+    schema: dict[str, Any],
+) -> None:
+    expected_types = schema.get("type")
+
+    if expected_types is not None:
+        if isinstance(expected_types, str):
+            expected_types = [expected_types]
+
+        if not any(
+            _matches_json_type(value, expected_type)
+            for expected_type in expected_types
+        ):
+            raise ValueError(
+                "Invalid AI tool argument type for "
+                f"{tool_name}.{argument_name}"
+            )
+
+    if "enum" in schema and value not in schema["enum"]:
+        raise ValueError(
+            f"AI tool argument {tool_name}.{argument_name} "
+            "is not an allowed value"
+        )
+
+    if value is None:
+        return
+
+    minimum = schema.get("minimum")
+    maximum = schema.get("maximum")
+
+    if minimum is not None and value < minimum:
+        raise ValueError(
+            f"AI tool argument {tool_name}.{argument_name} "
+            "is outside the allowed range"
+        )
+
+    if maximum is not None and value > maximum:
+        raise ValueError(
+            f"AI tool argument {tool_name}.{argument_name} "
+            "is outside the allowed range"
+        )
+
+
+def _validate_tool_arguments(
+    tool_name: str,
+    arguments: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if arguments is None:
+        arguments = {}
+
+    if not isinstance(arguments, dict):
+        raise ValueError(
+            f"AI tool arguments must be an object for {tool_name}"
+        )
+
+    schema = _TOOL_PARAMETER_SCHEMAS.get(tool_name)
+
+    if schema is None:
+        raise ValueError(
+            f"AI tool schema is not defined for {tool_name}"
+        )
+
+    properties = schema.get("properties", {})
+    required = schema.get("required", [])
+
+    for argument_name in required:
+        if argument_name not in arguments:
+            raise ValueError(
+                "Missing required AI tool argument: "
+                f"{tool_name}.{argument_name}"
+            )
+
+    if schema.get("additionalProperties") is False:
+        for argument_name in arguments:
+            if argument_name not in properties:
+                raise ValueError(
+                    "Unexpected AI tool argument: "
+                    f"{tool_name}.{argument_name}"
+                )
+
+    for argument_name, value in arguments.items():
+        argument_schema = properties.get(argument_name)
+
+        if argument_schema is None:
+            continue
+
+        _validate_tool_argument_value(
+            tool_name,
+            argument_name,
+            value,
+            argument_schema,
+        )
+
+    return dict(arguments)
+
+
+def _validate_internal_tool_arguments(
+    tool_name: str,
+    internal_arguments: dict[str, Any] | None,
+    public_arguments: dict[str, Any],
+) -> dict[str, Any]:
+    if internal_arguments is None:
+        return {}
+
+    if not isinstance(internal_arguments, dict):
+        raise ValueError("Internal AI tool arguments must be an object")
+
+    allowed_arguments = _INTERNAL_TOOL_ARGUMENTS.get(tool_name, {})
+
+    for argument_name, value in internal_arguments.items():
+        expected_type = allowed_arguments.get(argument_name)
+
+        if expected_type is None:
+            raise ValueError(
+                "Internal AI tool argument is not allowed: "
+                f"{tool_name}.{argument_name}"
+            )
+
+        if argument_name in public_arguments:
+            raise ValueError(
+                "Internal AI tool argument cannot override a public argument: "
+                f"{tool_name}.{argument_name}"
+            )
+
+        if not isinstance(value, expected_type):
+            raise ValueError(
+                "Invalid internal AI tool argument type for "
+                f"{tool_name}.{argument_name}"
+            )
+
+    return dict(internal_arguments)
+
+
 def _execute_tool(
     tool_name: str,
     arguments: dict[str, Any] | None = None,
+    *,
+    internal_arguments: dict[str, Any] | None = None,
 ) -> Any:
     if tool_name not in TOOL_REGISTRY:
         raise ValueError(
             f"Unknown AI tool requested: {tool_name}"
         )
 
-    tool = TOOL_REGISTRY[tool_name]
-    arguments = arguments or {}
+    validated_arguments = _validate_tool_arguments(
+        tool_name,
+        arguments,
+    )
+    validated_internal_arguments = _validate_internal_tool_arguments(
+        tool_name,
+        internal_arguments,
+        validated_arguments,
+    )
 
-    return tool(**arguments)
+    tool = TOOL_REGISTRY[tool_name]
+
+    return tool(
+        **validated_arguments,
+        **validated_internal_arguments,
+    )
 
 
 def _get_demo_tool_arguments(
@@ -1973,7 +2142,6 @@ def _get_demo_tool_arguments(
         }
 
     return {}
-
 
 
 def _format_financial_anomalies(result: Any) -> str:

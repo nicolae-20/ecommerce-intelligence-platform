@@ -123,15 +123,6 @@ def test_review_queue():
 
 
 def test_approve_transaction():
-    response = client.post("/bookkeeping/transactions/1/approve")
-
-    assert response.status_code == 200
-
-    data = response.json()
-
-    assert data["success"] is True
-    assert data["message"] == "AI category suggestion approved successfully."
-
     from database import get_connection
 
     connection = get_connection()
@@ -142,10 +133,51 @@ def test_approve_transaction():
                 UPDATE financial_transactions
                 SET
                     category = NULL,
+                    accounting_category_id = NULL,
+                    ai_suggested_category = 'Software',
+                    ai_confidence = 0.97,
                     reconciliation_status = 'UNMATCHED'
                 WHERE transaction_id = 1
             """)
+            connection.commit()
+    finally:
+        connection.close()
 
+    response = client.post("/bookkeeping/transactions/1/approve")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["success"] is True
+    assert data["message"] == "AI category suggestion approved successfully."
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    category,
+                    accounting_category_id,
+                    reconciliation_status
+                FROM financial_transactions
+                WHERE transaction_id = 1
+            """)
+            row = cursor.fetchone()
+
+            assert row[0] == "Software"
+            assert row[1] == 3
+            assert row[2] == "UNMATCHED"
+
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET
+                    category = NULL,
+                    accounting_category_id = NULL,
+                    reconciliation_status = 'UNMATCHED'
+                WHERE transaction_id = 1
+            """)
             connection.commit()
     finally:
         connection.close()
@@ -180,6 +212,24 @@ def test_reject_transaction():
 
 
 def test_assign_transaction_category():
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET
+                    category = NULL,
+                    accounting_category_id = NULL,
+                    reconciliation_status = 'UNMATCHED'
+                WHERE transaction_id = 1
+            """)
+            connection.commit()
+    finally:
+        connection.close()
+
     response = client.post("/bookkeeping/transactions/1/category/1")
 
     assert response.status_code == 200
@@ -189,33 +239,33 @@ def test_assign_transaction_category():
     assert data["success"] is True
     assert data["message"] == "Transaction category assigned successfully."
 
-    from database import get_connection
-
     connection = get_connection()
 
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
                 SELECT
-    accounting_category_id,
-    reconciliation_status
+                    category,
+                    accounting_category_id,
+                    reconciliation_status
                 FROM financial_transactions
                 WHERE transaction_id = 1
             """)
 
             row = cursor.fetchone()
 
-            assert row[0] == 1
-            assert row[1] == "MATCHED"
+            assert row[0] == "Sales Revenue"
+            assert row[1] == 1
+            assert row[2] == "UNMATCHED"
 
             cursor.execute("""
-    UPDATE financial_transactions
-    SET
-        category = NULL,
-        accounting_category_id = NULL,
-        reconciliation_status = 'UNMATCHED'
-    WHERE transaction_id = 1
-""")
+                UPDATE financial_transactions
+                SET
+                    category = NULL,
+                    accounting_category_id = NULL,
+                    reconciliation_status = 'UNMATCHED'
+                WHERE transaction_id = 1
+            """)
 
             connection.commit()
     finally:
@@ -290,6 +340,11 @@ def test_reconciliation_review():
                     match_confidence = NULL
                 WHERE bank_transaction_id IN (1, 2, 3, 4)
             """)
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET reconciliation_status = 'UNMATCHED'
+                WHERE transaction_id IN (1, 3, 5)
+            """)
 
             connection.commit()
     finally:
@@ -335,6 +390,18 @@ def test_reconciliation_review():
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
+                SELECT transaction_id, reconciliation_status
+                FROM financial_transactions
+                WHERE transaction_id IN (1, 3, 5)
+                ORDER BY transaction_id
+            """)
+            financial_rows = dict(cursor.fetchall())
+
+            assert financial_rows[1] == "MATCHED"
+            assert financial_rows[3] == "MATCHED"
+            assert financial_rows[5] == "UNMATCHED"
+
+            cursor.execute("""
                 UPDATE bank_transactions
                 SET
                     status = 'UNMATCHED',
@@ -342,6 +409,14 @@ def test_reconciliation_review():
                     match_type = NULL,
                     match_confidence = NULL
                 WHERE bank_transaction_id IN (1, 2, 3, 4)
+            """)
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET reconciliation_status = CASE
+                    WHEN transaction_id = 3 THEN 'MATCHED'
+                    ELSE 'UNMATCHED'
+                END
+                WHERE transaction_id IN (1, 3, 5)
             """)
 
             connection.commit()
@@ -364,6 +439,11 @@ def test_confirm_reconciliation():
                     match_type = 'POSSIBLE_MATCH',
                     match_confidence = 0.90
                 WHERE bank_transaction_id = 4
+            """)
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET reconciliation_status = 'UNMATCHED'
+                WHERE transaction_id = 5
             """)
 
             connection.commit()
@@ -405,6 +485,13 @@ def test_confirm_reconciliation():
             assert row[3] == 0.90
 
             cursor.execute("""
+                SELECT reconciliation_status
+                FROM financial_transactions
+                WHERE transaction_id = 5
+            """)
+            assert cursor.fetchone()[0] == "MATCHED"
+
+            cursor.execute("""
                 UPDATE bank_transactions
                 SET
                     status = 'UNMATCHED',
@@ -412,6 +499,11 @@ def test_confirm_reconciliation():
                     match_type = NULL,
                     match_confidence = NULL
                 WHERE bank_transaction_id = 4
+            """)
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET reconciliation_status = 'UNMATCHED'
+                WHERE transaction_id = 5
             """)
 
             connection.commit()
@@ -434,6 +526,11 @@ def test_reject_reconciliation():
                     match_type = 'POSSIBLE_MATCH',
                     match_confidence = 0.90
                 WHERE bank_transaction_id = 4
+            """)
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET reconciliation_status = 'UNMATCHED'
+                WHERE transaction_id = 5
             """)
 
             connection.commit()
@@ -473,6 +570,13 @@ def test_reject_reconciliation():
             assert row[1] is None
             assert row[2] == "NO_MATCH"
             assert row[3] == 0
+
+            cursor.execute("""
+                SELECT reconciliation_status
+                FROM financial_transactions
+                WHERE transaction_id = 5
+            """)
+            assert cursor.fetchone()[0] == "UNMATCHED"
 
             cursor.execute("""
                 UPDATE bank_transactions
@@ -643,6 +747,11 @@ def test_run_reconciliation():
                     investigation_status = NULL
                 WHERE bank_transaction_id IN (1, 2, 3, 4)
             """)
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET reconciliation_status = 'UNMATCHED'
+                WHERE transaction_id IN (1, 3, 5)
+            """)
 
             connection.commit()
     finally:
@@ -700,6 +809,18 @@ def test_run_reconciliation():
             assert rows[3][4] == 0.9
 
             cursor.execute("""
+                SELECT transaction_id, reconciliation_status
+                FROM financial_transactions
+                WHERE transaction_id IN (1, 3, 5)
+                ORDER BY transaction_id
+            """)
+            financial_rows = dict(cursor.fetchall())
+
+            assert financial_rows[1] == "MATCHED"
+            assert financial_rows[3] == "MATCHED"
+            assert financial_rows[5] == "UNMATCHED"
+
+            cursor.execute("""
                 UPDATE bank_transactions
                 SET
                     status = 'UNMATCHED',
@@ -708,6 +829,14 @@ def test_run_reconciliation():
                     match_confidence = NULL,
                     investigation_status = NULL
                 WHERE bank_transaction_id IN (1, 2, 3, 4)
+            """)
+            cursor.execute("""
+                UPDATE financial_transactions
+                SET reconciliation_status = CASE
+                    WHEN transaction_id = 3 THEN 'MATCHED'
+                    ELSE 'UNMATCHED'
+                END
+                WHERE transaction_id IN (1, 3, 5)
             """)
 
             connection.commit()

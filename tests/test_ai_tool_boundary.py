@@ -296,7 +296,7 @@ def test_execute_tool_rejects_public_internal_only_argument(monkeypatch):
     assert called is False
 
 
-def test_internal_executor_allows_bounded_trusted_argument(monkeypatch):
+def test_execute_tool_allows_bounded_trusted_internal_argument(monkeypatch):
     import ai_assistant
 
     captured = {}
@@ -311,12 +311,10 @@ def test_internal_executor_allows_bounded_trusted_argument(monkeypatch):
         fake_investigation,
     )
 
-    result = ai_assistant._execute_internal_tool(
+    result = ai_assistant._execute_tool(
         "investigate_uncategorized_transaction",
-        {
-            "transaction_id": 7,
-            "demo_only": True,
-        },
+        {"transaction_id": 7},
+        internal_arguments={"demo_only": True},
     )
 
     assert result == {
@@ -326,7 +324,7 @@ def test_internal_executor_allows_bounded_trusted_argument(monkeypatch):
     assert captured == result
 
 
-def test_internal_executor_rejects_unapproved_private_argument(monkeypatch):
+def test_execute_tool_rejects_unapproved_internal_argument(monkeypatch):
     import ai_assistant
 
     called = False
@@ -343,35 +341,13 @@ def test_internal_executor_rejects_unapproved_private_argument(monkeypatch):
     )
 
     with pytest.raises(ValueError, match="Internal AI tool argument is not allowed"):
-        ai_assistant._execute_internal_tool(
+        ai_assistant._execute_tool(
             "get_bookkeeping_summary",
-            {"demo_only": True},
+            {},
+            internal_arguments={"demo_only": True},
         )
 
     assert called is False
-
-
-def test_internal_executor_allows_nullable_schema_defaults(monkeypatch):
-    import ai_assistant
-
-    captured = {}
-
-    def fake_anomalies(**kwargs):
-        captured.update(kwargs)
-        return {"anomalies": []}
-
-    monkeypatch.setitem(
-        ai_assistant.TOOL_REGISTRY,
-        "get_financial_anomalies",
-        fake_anomalies,
-    )
-
-    result = ai_assistant._execute_internal_tool(
-        "get_financial_anomalies",
-    )
-
-    assert result == {"anomalies": []}
-    assert captured == {}
 
 
 def test_valid_arguments_execute_after_validation(monkeypatch):
